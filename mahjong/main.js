@@ -160,7 +160,7 @@ function drawFor(i) {
   }
   seats[i].hand.push(wall.pop());
   if (seats[i].ai) sortHand(i);
-  else drewT0 = Date.now();
+  else if (i === me) drewT0 = Date.now();
   return true;
 }
 
