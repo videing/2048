@@ -168,7 +168,7 @@ function canSelfWin(i) {
   return canWinHand(countsFromTiles(seats[i].hand), seats[i].melds.length);
 }
 
-function claimOptions(p, tile, canChi) {
+function claimOptions(p, tile) {
   const s = seats[p];
   const counts = countsFromTiles(s.hand);
   const opts = [];
@@ -177,12 +177,6 @@ function claimOptions(p, tile, canChi) {
   counts[tile]--;
   if (counts[tile] >= 2) opts.push({ type: 'peng' });
   if (counts[tile] >= 3) opts.push({ type: 'gang' });
-  if (canChi && tile < 27) {
-    const r = tile % 9;
-    if (r >= 2 && counts[tile - 2] > 0 && counts[tile - 1] > 0) opts.push({ type: 'chi', seq: [tile - 2, tile - 1, tile] });
-    if (r >= 1 && r <= 7 && counts[tile - 1] > 0 && counts[tile + 1] > 0) opts.push({ type: 'chi', seq: [tile - 1, tile, tile + 1] });
-    if (r <= 6 && counts[tile + 1] > 0 && counts[tile + 2] > 0) opts.push({ type: 'chi', seq: [tile, tile + 1, tile + 2] });
-  }
   return opts;
 }
 
@@ -199,7 +193,7 @@ function discardTile(i, idx) {
   const base = active.indexOf(i);
   for (let k = 1; k < active.length; k++) {
     const p = active[(base + k) % active.length];
-    const opts = claimOptions(p, tile, k === 1);
+    const opts = claimOptions(p, tile);
     if (opts.length) claims.push({ seat: p, opts });
   }
 
@@ -249,16 +243,6 @@ function applyClaim(seat, opt, tile, from) {
     sfx.gang();
     message = (seat === me ? '你' : s.name) + ' 杠 ' + kindName(tile);
     drawFor(seat);
-  } else if (opt.type === 'chi') {
-    opt.seq.forEach(t => {
-      if (t === tile) return;
-      const j = s.hand.indexOf(t);
-      if (j >= 0) s.hand.splice(j, 1);
-    });
-    s.melds.push({ type: 'chi', tiles: opt.seq.slice(), from });
-    seats[from].discards.pop();
-    sfx.peng();
-    message = (seat === me ? '你' : s.name) + ' 吃 ' + opt.seq.map(kindName).join('');
   }
 
   lastDiscard = null;
@@ -472,7 +456,7 @@ function hostApply(seat, msg) {
     if (phase !== 'claim' || !lastDiscard) return;
     const mine = pendingClaims.find(c => c.seat === seat);
     if (!mine) return;
-    const opt = mine.opts.find(o => o.type === msg.a && (o.type !== 'chi' || (msg.seq && o.seq.join() === msg.seq.join())));
+    const opt = mine.opts.find(o => o.type === msg.a);
     if (!opt) return;
     if (opt.type === 'win') doWin(seat, lastDiscard.from, false);
     else applyClaim(seat, opt, lastDiscard.tile, lastDiscard.from);
@@ -991,9 +975,10 @@ function drawHumanArea() {
   const total = s.hand.length;
   const reveal = dealing ? Math.min(total, Math.floor((now - dealT0) / 68)) : total;
 
-  // 手牌布局（留出摸牌间隙）
+  // 手牌布局（摸到的牌留出更大的缝）
   const drawnIdx = !dealing && drewT0 && now - drewT0 < 1500 ? total - 1 : -1;
-  const gapExtra = drawnIdx >= 0 ? 10 : 0;
+  const gapExtra = drawnIdx >= 0 ? Math.round(HAND_W * 0.55) : 0;
+  const lift = Math.round(HAND_H * 0.08);
   const totalW = total * (HAND_W + 2) + gapExtra;
   const hx0 = (W - totalW) / 2;
 
@@ -1002,7 +987,7 @@ function drawHumanArea() {
 
   for (let i = 0; i < reveal; i++) {
     let x = hx0 + i * (HAND_W + 2) + (drawnIdx >= 0 && i >= drawnIdx ? gapExtra : 0);
-    let y = HAND_Y;
+    let y = HAND_Y - (drawnIdx >= 0 && i === drawnIdx ? lift : 0);
     let scale = 1;
 
     // 发牌：最新一张从牌墙飞入
@@ -1093,12 +1078,11 @@ function drawButtons() {
 
   if (phase === 'claim' && lastDiscard) {
     const opts = isHost ? (pendingClaims.find(c => c.seat === me) || { opts: [] }).opts
-                        : claimOptions(me, lastDiscard.tile, nextSeat(lastDiscard.from) === me);
+                        : claimOptions(me, lastDiscard.tile);
     opts.forEach(o => {
       if (o.type === 'win') btns.push({ label: '胡', action: 'discardWin', color: '#d94a34', w: 56 });
       if (o.type === 'peng') btns.push({ label: '碰', action: 'peng', color: '#2f7dd0', w: 56 });
       if (o.type === 'gang') btns.push({ label: '杠', action: 'gang', color: '#7a4fd0', w: 56 });
-      if (o.type === 'chi') btns.push({ label: '吃', action: 'chi', color: '#2f9d6a', w: 56, payload: o.seq });
     });
     if (btns.length) btns.push({ label: '过', action: 'pass', color: '#4a4a4a', w: 56 });
   }
@@ -1326,7 +1310,7 @@ function handle(h) {
   if (!isHost && isOnline) {
     if (h.action === 'win') return;
     if (h.action === 'angang') return;
-    sendAct(h.action === 'discardWin' ? 'win' : h.action, h.action === 'chi' ? { seq: h.payload } : null);
+    sendAct(h.action === 'discardWin' ? 'win' : h.action);
     return;
   }
 
@@ -1334,7 +1318,6 @@ function handle(h) {
   else if (h.action === 'discardWin') doWin(me, lastDiscard.from, false);
   else if (h.action === 'peng') applyClaim(me, { type: 'peng' }, lastDiscard.tile, lastDiscard.from);
   else if (h.action === 'gang') applyClaim(me, { type: 'gang' }, lastDiscard.tile, lastDiscard.from);
-  else if (h.action === 'chi') applyClaim(me, { type: 'chi', seq: h.payload }, lastDiscard.tile, lastDiscard.from);
   else if (h.action === 'angang') concealedGang(me, h.payload);
   else if (h.action === 'pass') { pendingClaims = pendingClaims.filter(c => c.seat !== me); if (!pendingClaims.length) nextTurn(lastDiscard.from); }
 }
