@@ -82,7 +82,9 @@ let me = 0;
 let isHost = false;
 let isOnline = false;
 let peer = null;
+let conn = null;
 let conns = [];       // [{conn, seat}]
+let joinAttempt = 0;
 let roomCode = '';
 let debugLog = [];
 let stateVersion = 0;
@@ -522,37 +524,71 @@ function copyText(text) {
   }
 }
 
-function startHost() {
-  roomCode = makeCode();
-  peer = new Peer('mj4-' + roomCode, { debug: 0 });
+function bindHostEvents() {
   peer.on('open', () => {
     isHost = true;
     isOnline = true;
     me = 0;
-    conns = [];
     hostReady = true;
-    phase = 'hostWait';
-    log('房间号 ' + roomCode);
-    setTimeout(() => {
-      if (conns.length === 0) log('等待玩家加入…');
-    }, 8000);
+    phase = phase === 'lobby' ? 'hostWait' : phase;
+    log('房间 ' + roomCode + ' 已就绪');
   });
-  peer.on('connection', (conn) => {
-    conn.on('open', () => {
-      if (conns.length >= 3) { conn.send({ t: 'full' }); return; }
+
+  peer.on('connection', (c) => {
+    c.on('open', () => {
+      if (conns.length >= 3) { c.send({ t: 'full' }); return; }
       const seat = conns.length + 1;
-      conns.push({ conn, seat });
-      conn.send({ t: 'welcome', seat });
+      conns.push({ conn: c, seat });
+      c.send({ t: 'welcome', seat });
       log('玩家加入 → ' + NAMES[seat]);
       broadcastLobby();
+
+      // 已经开局了：把当前牌局补发给新连上的人
+      if (phase === 'playing' || phase === 'over') {
+        c.send({ t: 'start', seat, wild: wildMode });
+        c.send({ t: 'state', v: viewFor(seat) });
+      }
     });
-    conn.on('data', (msg) => onHostData(conn, msg));
-    conn.on('close', () => {
-      conns = conns.filter(c => c.conn !== conn);
+    c.on('data', (msg) => onHostData(c, msg));
+    c.on('close', () => {
+      conns = conns.filter(x => x.conn !== c);
       log('玩家离开');
     });
   });
+
   peer.on('error', (e) => log('错误: ' + e.type));
+
+  peer.on('disconnected', () => {
+    log('信令断开，重连…');
+    setTimeout(() => {
+      if (!peer || peer.destroyed) return;
+      try { peer.reconnect(); } catch (err) {}
+      setTimeout(() => {
+        if (isHost && peer && peer.disconnected) {
+          log('重连失败，重新注册房间');
+          recreateHostPeer();
+        }
+      }, 2500);
+    }, 800);
+  });
+
+  peer.on('close', () => log('连接已关闭'));
+}
+
+function recreateHostPeer() {
+  if (!isHost || !roomCode) return;
+  if (peer && !peer.destroyed) {
+    try { peer.destroy(); } catch (e) {}
+  }
+  peer = new Peer('mj4-' + roomCode, { debug: 0 });
+  bindHostEvents();
+}
+
+function startHost() {
+  roomCode = makeCode();
+  conns = [];
+  peer = new Peer('mj4-' + roomCode, { debug: 0 });
+  bindHostEvents();
 }
 
 function broadcastLobby() {
@@ -596,29 +632,60 @@ function startHostGame() {
 }
 
 function startJoin(code) {
-  roomCode = code.toUpperCase();
+  roomCode = (code || '').toUpperCase();
+  joinAttempt = 0;
+  phase = 'joinWait';
+  tryJoin();
+}
+
+function tryJoin() {
+  if (conn && conn.open) return;
+  if (peer && !peer.destroyed) {
+    try { peer.destroy(); } catch (e) {}
+    peer = null;
+  }
+  conn = null;
+
   peer = new Peer({ debug: 0 });
+
   peer.on('open', () => {
     conn = peer.connect('mj4-' + roomCode, { reliable: true });
+    if (!conn) {
+      log('创建连接失败');
+      return;
+    }
+
     conn.on('open', () => {
       isOnline = true;
       isHost = false;
-      phase = 'joinWait';
-      log('已连接 ' + roomCode);
+      joinAttempt = 0;
+      log('✅ 已连接房间 ' + roomCode);
     });
+
     conn.on('data', (msg) => onClientData(msg));
+
     conn.on('close', () => {
       log('与房主断开');
-      if (phase !== 'lobby') {
+      if (phase === 'playing') {
         phase = 'lobby';
         seats = [];
       }
     });
-    window.__conn = conn;
   });
+
   peer.on('error', (e) => {
-    log('错误: ' + (e.type === 'peer-unavailable' ? '房间不存在' : e.type));
-    phase = 'lobby';
+    if (e.type === 'peer-unavailable') {
+      joinAttempt++;
+      if (joinAttempt <= 60) {
+        log('等待房主上线…' + joinAttempt + '/60');
+        setTimeout(tryJoin, 3000);
+      } else {
+        log('连接失败：房主页面已关闭');
+        phase = 'lobby';
+      }
+      return;
+    }
+    log('错误: ' + e.type);
   });
 }
 
@@ -1562,11 +1629,10 @@ function handle(h) {
 }
 
 function sendAct(a, extra) {
-  const c = window.__conn;
-  if (!c) return;
+  if (!conn || !conn.open) return;
   const msg = { t: 'act', a };
   if (extra) Object.assign(msg, extra);
-  c.send(msg);
+  conn.send(msg);
 }
 
 canvas.addEventListener('pointerdown', (e) => {
@@ -1596,6 +1662,29 @@ setInterval(() => {
     onViewportChange();
   }
 }, 400);
+
+// 从后台切回来时重连（去微信发链接会切走，回来必须自动恢复）
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+
+  if (isHost && isOnline) {
+    if (!peer || peer.destroyed || peer.disconnected) {
+      log('回到前台，恢复房间…');
+      recreateHostPeer();
+    }
+    return;
+  }
+
+  if (!isOnline) return;
+
+  if (peer && !peer.destroyed && peer.disconnected) {
+    try { peer.reconnect(); } catch (e) {}
+  }
+  if (!isHost && (!conn || !conn.open)) {
+    log('回到前台，重连房间…');
+    tryJoin();
+  }
+});
 
 /* ================= 启动 ================= */
 
