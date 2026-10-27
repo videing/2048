@@ -1426,8 +1426,8 @@ let hintT0 = Date.now();
 function drawRotateHint(now) {
   if (H <= W * 1.05) return;
   const t = now - hintT0;
-  if (t > 4200) return;
-  const a = t < 3200 ? 1 : (4200 - t) / 1000;
+  if (t > 3000) return;
+  const a = t < 2400 ? 1 : (3000 - t) / 600;
 
   ctx.save();
   ctx.globalAlpha = Math.max(0, a) * 0.9;
