@@ -1362,12 +1362,30 @@ window.addEventListener('resize', () => {
 layout();
 phase = 'lobby';
 
+// 调试用：?auto=1 直接开一局单机
+if (location.search.indexOf('auto') >= 0) {
+  startHostGame();
+}
+
 function loop() {
   const now = Date.now();
-  if (isHost && isOnline && phase === 'playing' && stateVersion !== lastSentVersion) {
-    broadcastState();
+  try {
+    if (isHost && isOnline && phase === 'playing' && stateVersion !== lastSentVersion) {
+      broadcastState();
+    }
+    draw(now);
+  } catch (err) {
+    log('渲染错误: ' + (err && err.message ? err.message : err));
+    try {
+      ctx.fillStyle = 'rgba(200,40,40,0.9)';
+      ctx.fillRect(0, 0, W, 40);
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.font = '14px monospace';
+      ctx.fillText('ERR: ' + (err && err.message ? err.message : String(err)), 10, 20);
+    } catch (e2) {}
   }
-  draw(now);
   requestAnimationFrame(loop);
 }
 
