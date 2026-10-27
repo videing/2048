@@ -26,75 +26,121 @@ export function countsFromTiles(tiles) {
   return c;
 }
 
-function checkMelds(c, need) {
+function checkMelds(c, need, wild) {
   if (need === 0) {
     for (let i = 0; i < KINDS; i++) if (c[i] !== 0) return false;
-    return true;
+    return wild === 0;
   }
   let i = 0;
   while (i < KINDS && c[i] === 0) i++;
-  if (i === KINDS) return false;
+  if (i === KINDS) return wild === need * 3;
 
   if (c[i] >= 3) {
     c[i] -= 3;
-    if (checkMelds(c, need - 1)) {
+    if (checkMelds(c, need - 1, wild)) {
       c[i] += 3;
       return true;
     }
     c[i] += 3;
   }
-
-  if (i < 27 && i % 9 <= 6 && c[i + 1] > 0 && c[i + 2] > 0) {
-    c[i]--; c[i + 1]--; c[i + 2]--;
-    if (checkMelds(c, need - 1)) {
-      c[i]++; c[i + 1]++; c[i + 2]++;
+  if (c[i] === 2 && wild >= 1) {
+    c[i] -= 2;
+    if (checkMelds(c, need - 1, wild - 1)) {
+      c[i] += 2;
       return true;
     }
-    c[i]++; c[i + 1]++; c[i + 2]++;
+    c[i] += 2;
   }
-  return false;
-}
-
-export function canWinHand(counts, meldCount) {
-  const need = 4 - meldCount;
-  if (need < 0) return false;
-
-  let total = 0;
-  for (let i = 0; i < KINDS; i++) total += counts[i];
-  if (total !== need * 3 + 2) return false;
-
-  if (meldCount === 0 && total === 14) {
-    let pairs = 0;
-    let ok = true;
-    for (let i = 0; i < KINDS; i++) {
-      if (counts[i] === 0) continue;
-      if (counts[i] === 2) pairs += 1;
-      else if (counts[i] === 4) pairs += 2;
-      else {
-        ok = false;
-        break;
-      }
+  if (c[i] === 1 && wild >= 2) {
+    c[i] -= 1;
+    if (checkMelds(c, need - 1, wild - 2)) {
+      c[i] += 1;
+      return true;
     }
-    if (ok && pairs === 7) return true;
+    c[i] += 1;
   }
 
-  for (let j = 0; j < KINDS; j++) {
-    if (counts[j] >= 2) {
-      counts[j] -= 2;
-      const ok = checkMelds(counts, need);
-      counts[j] += 2;
+  if (i < 27 && i % 9 <= 6) {
+    const has1 = c[i + 1] > 0;
+    const has2 = c[i + 2] > 0;
+    const needW = (has1 ? 0 : 1) + (has2 ? 0 : 1);
+    if (needW <= wild) {
+      c[i]--;
+      if (has1) c[i + 1]--;
+      if (has2) c[i + 2]--;
+      const ok = checkMelds(c, need - 1, wild - needW);
+      c[i]++;
+      if (has1) c[i + 1]++;
+      if (has2) c[i + 2]++;
       if (ok) return true;
     }
   }
   return false;
 }
 
-export function waitingTiles(counts, meldCount) {
+function checkSevenPairs(counts, wild) {
+  let pairs = 0;
+  let singles = 0;
+  for (let i = 0; i < KINDS; i++) {
+    const c = counts[i];
+    pairs += Math.floor(c / 2);
+    if (c % 2) singles++;
+  }
+  const useForSingles = Math.min(singles, wild);
+  pairs += useForSingles;
+  const left = wild - useForSingles;
+  pairs += Math.floor(left / 2);
+  return singles - useForSingles === 0 && pairs === 7;
+}
+
+export function canWinHand(counts, meldCount, wild) {
+  wild = wild || 0;
+  const need = 4 - meldCount;
+  if (need < 0) return false;
+
+  let total = 0;
+  for (let i = 0; i < KINDS; i++) total += counts[i];
+  if (total + wild !== need * 3 + 2) return false;
+
+  if (meldCount === 0 && total + wild === 14 && checkSevenPairs(counts, wild)) {
+    return true;
+  }
+
+  const c = counts.slice();
+
+  for (let j = 0; j < KINDS; j++) {
+    if (c[j] >= 2) {
+      c[j] -= 2;
+      const ok = checkMelds(c, need, wild);
+      c[j] += 2;
+      if (ok) return true;
+    }
+  }
+  for (let j = 0; j < KINDS; j++) {
+    if (c[j] === 1 && wild >= 1) {
+      c[j] -= 1;
+      const ok = checkMelds(c, need, wild - 1);
+      c[j] += 1;
+      if (ok) return true;
+    }
+  }
+  if (wild >= 2 && checkMelds(c, need, wild - 2)) return true;
+
+  return false;
+}
+
+export function waitingTiles(counts, meldCount, wild) {
+  wild = wild || 0;
   const res = [];
   for (let k = 0; k < KINDS; k++) {
+    if (k === 31) {
+      // 红中是癞子，只能作为万能牌加进去，不能写进 counts
+      if (canWinHand(counts, meldCount, wild + 1)) res.push(k);
+      continue;
+    }
     if (counts[k] >= 4) continue;
     counts[k]++;
-    if (canWinHand(counts, meldCount)) res.push(k);
+    if (canWinHand(counts, meldCount, wild)) res.push(k);
     counts[k]--;
   }
   return res;
