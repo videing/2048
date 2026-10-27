@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>P2P 自检</title>
+<style>
+  body { margin: 0; background: #0b1410; color: #e8e4da; font: 16px/1.8 -apple-system, "PingFang SC", sans-serif; padding: 40px; }
+  h1 { color: #f2b179; font-size: 26px; margin: 0 0 20px; }
+  #log { font: 15px/1.9 monospace; white-space: pre-wrap; }
+  .ok { color: #7fd6a0; } .bad { color: #ff7b6b; } .dim { color: #7f8c85; }
+</style>
+</head>
+<body>
+<h1>P2P 自检</h1>
+<div id="log">加载 PeerJS…</div>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script>
+const logEl = document.getElementById('log');
+let lines = [];
+function log(msg, cls) {
+  lines.push(cls ? '<span class="' + cls + '">' + msg + '</span>' : msg);
+  logEl.innerHTML = lines.join('\n');
+}
+
+setTimeout(() => {
+  if (!window.Peer) { log('❌ PeerJS 加载失败（CDN 不可达）', 'bad'); return; }
+  log('✅ PeerJS 已加载', 'ok');
+
+  const room = 'selftest' + Math.floor(Math.random() * 100000);
+  const host = new Peer('mj4t-' + room, { debug: 0 });
+  let done = false;
+
+  host.on('open', () => {
+    log('✅ 房主 peer 已连上信令服务器，房间号 ' + room, 'ok');
+
+    const client = new Peer({ debug: 0 });
+    client.on('open', () => {
+      log('✅ 客户端 peer 已连上信令服务器', 'ok');
+      const conn = client.connect('mj4t-' + room, { reliable: true });
+
+      conn.on('open', () => {
+        log('✅ 数据通道已建立，发送 ping…', 'ok');
+        conn.send({ t: 'ping', n: 42 });
+      });
+      conn.on('data', (msg) => {
+        if (msg.t === 'pong' && msg.n === 42) {
+          log('✅ 收到 pong（n=42）— 双向通信正常', 'ok');
+          log('🎉 联机链路完全可用', 'ok');
+          done = true;
+          document.title = 'PASS';
+        }
+      });
+      conn.on('error', (e) => log('❌ 数据通道错误: ' + e, 'bad'));
+    });
+    client.on('error', (e) => log('❌ 客户端错误: ' + e.type, 'bad'));
+  });
+
+  host.on('connection', (conn) => {
+    log('✅ 房主收到连接请求', 'ok');
+    conn.on('data', (msg) => {
+      if (msg.t === 'ping') conn.send({ t: 'pong', n: msg.n });
+    });
+  });
+
+  host.on('error', (e) => log('❌ 房主错误: ' + e.type, 'bad'));
+
+  setTimeout(() => {
+    if (!done) log('⏱ 15 秒内未完成握手（可能网络受限）', 'bad');
+  }, 15000);
+}, 300);
+</script>
+</body>
+</html>
