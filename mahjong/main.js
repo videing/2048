@@ -164,16 +164,31 @@ function drawFor(i) {
   return true;
 }
 
+function splitWild(tiles) {
+  const counts = countsFromTiles(tiles);
+  const wild = counts[31] || 0;
+  counts[31] = 0;
+  return { counts, wild };
+}
+
 function canSelfWin(i) {
-  return canWinHand(countsFromTiles(seats[i].hand), seats[i].melds.length);
+  const w = splitWild(seats[i].hand);
+  return canWinHand(w.counts, seats[i].melds.length, w.wild);
 }
 
 function claimOptions(p, tile) {
   const s = seats[p];
-  const counts = countsFromTiles(s.hand);
+  const w = splitWild(s.hand);
+  const counts = w.counts;
   const opts = [];
+
+  if (tile === 31) {
+    if (canWinHand(counts, s.melds.length, w.wild + 1)) opts.push({ type: 'win' });
+    return opts;
+  }
+
   counts[tile]++;
-  if (canWinHand(counts, s.melds.length)) opts.push({ type: 'win' });
+  if (canWinHand(counts, s.melds.length, w.wild)) opts.push({ type: 'win' });
   counts[tile]--;
   if (counts[tile] >= 2) opts.push({ type: 'peng' });
   if (counts[tile] >= 3) opts.push({ type: 'gang' });
@@ -241,7 +256,10 @@ function applyClaim(seat, opt, tile, from) {
     s.melds.push({ type: 'gang', tiles: [tile, tile, tile, tile], from });
     seats[from].discards.pop();
     sfx.gang();
-    message = (seat === me ? '你' : s.name) + ' 杠 ' + kindName(tile);
+    // 明杠：放杠的人赔 1 分
+    seats[from].score -= 1;
+    s.score += 1;
+    message = (seat === me ? '你' : s.name) + ' 杠 ' + kindName(tile) + '（' + seats[from].name + ' 赔 1 分）';
     drawFor(seat);
   }
 
@@ -259,20 +277,57 @@ function doWin(seat, from, selfDraw) {
   winner = seat;
   const s = seats[seat];
   const info = fanOf(seat, selfDraw);
+
   const deltas = {};
   active.forEach(i => { deltas[i] = 0; });
+
+  // 1. 底分结算
   active.forEach(i => {
     if (i === seat) return;
     const pay = selfDraw ? info.fan : i === from ? info.fan * 2 : info.fan;
     deltas[i] -= pay;
     deltas[seat] += pay;
-    seats[i].score -= pay;
   });
-  seats[seat].score += deltas[seat];
-  winInfo = { fan: info.fan, name: info.name, selfDraw, deltas };
+
+  // 2. 胡后摸牌：带红中摸 4 张，不带红中摸 6 张；摸到 1/5/9/东/红中，每家赔 1 分
+  const allTiles = s.hand.slice();
+  s.melds.forEach(m => m.tiles.forEach(t => allTiles.push(t)));
+  const hasRed = allTiles.indexOf(31) >= 0;
+  const drawCount = hasRed ? 4 : 6;
+
+  const bonusTiles = [];
+  for (let i = 0; i < drawCount && wall.length; i++) bonusTiles.push(wall.pop());
+
+  let bonusHits = 0;
+  bonusTiles.forEach(k => {
+    if (k === 27 || k === 31) bonusHits++;
+    else if (k < 27 && (k % 9 === 0 || k % 9 === 4 || k % 9 === 8)) bonusHits++;
+  });
+
+  if (bonusHits) {
+    active.forEach(i => {
+      if (i === seat) return;
+      deltas[i] -= bonusHits;
+      deltas[seat] += bonusHits;
+    });
+  }
+
+  // 3. 落分
+  active.forEach(i => { seats[i].score += deltas[i]; });
+
+  winInfo = {
+    fan: info.fan,
+    name: info.name,
+    selfDraw,
+    deltas,
+    hasRed,
+    drawCount,
+    bonusTiles,
+    bonusHits
+  };
   message = selfDraw
     ? (seat === me ? '你自摸！' : s.name + ' 自摸')
-    : (seat === me ? '你胡了 ' + kindName(lastDiscard.tile) : s.name + ' 胡了 ' + kindName(lastDiscard.tile));
+    : (seat === me ? '你胡了 ' + (lastDiscard ? kindName(lastDiscard.tile) : '') : s.name + ' 胡了 ' + (lastDiscard ? kindName(lastDiscard.tile) : ''));
   winT = Date.now();
   sfx.win();
   stateVersion++;
@@ -282,35 +337,45 @@ function fanOf(seat, selfDraw) {
   const s = seats[seat];
   const tiles = s.hand.slice();
   s.melds.forEach(m => m.tiles.forEach(t => tiles.push(t)));
-  const honors = tiles.filter(k => k >= 27).length;
+
+  const honors = tiles.filter(k => k >= 27 && k !== 31).length;
   const suitSet = {};
   tiles.forEach(k => { if (k < 27) suitSet[Math.floor(k / 9)] = 1; });
   const pure = honors === 0 && Object.keys(suitSet).length === 1;
 
+  const w = splitWild(s.hand);
   let sevenPairs = false;
   if (!s.melds.length) {
-    const c = countsFromTiles(s.hand);
-    let pairs = 0, ok = true;
+    let pairs = 0;
+    let singles = 0;
     for (let i = 0; i < 34; i++) {
-      if (c[i] === 0) continue;
-      if (c[i] === 2) pairs++;
-      else if (c[i] === 4) pairs += 2;
-      else { ok = false; break; }
+      const c = w.counts[i];
+      pairs += Math.floor(c / 2);
+      if (c % 2) singles++;
     }
-    sevenPairs = ok && pairs === 7;
+    const use = Math.min(singles, w.wild);
+    pairs += use;
+    singles -= use;
+    pairs += Math.floor((w.wild - use) / 2);
+    sevenPairs = singles === 0 && pairs === 7;
   }
 
-  const c2 = countsFromTiles(s.hand);
-  let tripletOk = true, pairCount = 0;
-  for (let i = 0; i < 34; i++) {
-    if (c2[i] === 0) continue;
-    if (c2[i] === 2) pairCount++;
-    else if (c2[i] !== 3) tripletOk = false;
+  let pengPeng = false;
+  if (w.wild === 0) {
+    let tripletOk = true;
+    let pairCount = 0;
+    for (let i = 0; i < 34; i++) {
+      const c = w.counts[i];
+      if (c === 0) continue;
+      if (c === 2) pairCount++;
+      else if (c !== 3) tripletOk = false;
+    }
+    const allPeng = s.melds.every(m => m.type !== 'chi');
+    pengPeng = tripletOk && pairCount === 1 && allPeng;
   }
-  const allPeng = s.melds.every(m => m.type !== 'chi');
-  const pengPeng = tripletOk && pairCount === 1 && allPeng;
 
-  let fan = 1, name = '平胡';
+  let fan = 1;
+  let name = '平胡';
   if (pure) { fan = 3; name = '清一色'; }
   else if (sevenPairs) { fan = 2; name = '七对'; }
   else if (pengPeng) { fan = 2; name = '碰碰胡'; }
@@ -339,6 +404,7 @@ function aiTurn(i) {
   if (canSelfWin(i)) { doWin(i, i, true); return; }
   const counts = countsFromTiles(seats[i].hand);
   for (let k = 0; k < 34; k++) {
+    if (k === 31) continue;
     if (counts[k] === 4) { concealedGang(i, k); return; }
   }
   aiDiscard(i);
@@ -349,7 +415,15 @@ function concealedGang(i, k) {
   for (let n = 0; n < 4; n++) s.hand.splice(s.hand.indexOf(k), 1);
   s.melds.push({ type: 'gang', tiles: [k, k, k, k], from: -1, concealed: true });
   sfx.gang();
-  message = (i === me ? '你' : s.name) + ' 暗杠 ' + kindName(k);
+  // 暗杠：其他三家各赔 2 分
+  let income = 0;
+  active.forEach(j => {
+    if (j === i) return;
+    seats[j].score -= 2;
+    income += 2;
+  });
+  s.score += income;
+  message = (i === me ? '你' : s.name) + ' 暗杠 ' + kindName(k) + '（每家赔 2 分）';
   drawFor(i);
   turn = i;
   phase = 'playing';
@@ -1028,7 +1102,8 @@ function drawHumanArea() {
   ctx.fillText((s.score > 0 ? '+' : '') + s.score + ' 分', 46, HAND_Y + 26);
 
   if (phase === 'playing' && turn === me && !canSelfWin(me)) {
-    const waits = waitingTiles(countsFromTiles(s.hand), s.melds.length);
+    const w = splitWild(s.hand);
+    const waits = waitingTiles(w.counts, s.melds.length, w.wild);
     if (waits.length) {
       ctx.fillStyle = '#7fd6a0';
       ctx.font = '11px -apple-system, "PingFang SC", sans-serif';
@@ -1110,47 +1185,75 @@ function drawButtons() {
 function drawOver(now) {
   const t = Math.min(1, (now - winT) / 280);
   const ease = 1 - Math.pow(1 - t, 3);
-  ctx.fillStyle = 'rgba(8,10,12,' + (0.82 * ease).toFixed(3) + ')';
+  ctx.fillStyle = 'rgba(8,10,12,' + (0.85 * ease).toFixed(3) + ')';
   ctx.fillRect(0, 0, W, H);
 
   const slide = (1 - ease) * 14;
+  const f = Math.min(H * 0.062, 34);
+  const f2 = Math.min(H * 0.038, 21);
+  const f3 = Math.min(H * 0.032, 18);
+
+  let y = H * 0.05 + slide;
+
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
   ctx.fillStyle = winner === me ? '#f2b179' : '#f3f1ea';
-  ctx.font = 'bold ' + Math.round(H * 0.062) + 'px -apple-system, "PingFang SC", sans-serif';
-  ctx.fillText(winner === me ? '你胡了 🎉' : winner > 0 ? NAMES[winner] + ' 胡了' : '流局', W / 2, H * 0.06 + slide);
+  ctx.font = 'bold ' + Math.round(f) + 'px -apple-system, "PingFang SC", sans-serif';
+  ctx.fillText(winner === me ? '你胡了 🎉' : winner > 0 ? NAMES[winner] + ' 胡了' : '流局', W / 2, y);
+  y += f + 14;
 
   if (winInfo) {
     ctx.fillStyle = '#ffd08a';
-    ctx.font = 'bold ' + Math.round(H * 0.038) + 'px -apple-system, "PingFang SC", sans-serif';
-    ctx.fillText(winInfo.name + ' · ' + winInfo.fan + ' 番', W / 2, H * 0.14 + slide);
+    ctx.font = 'bold ' + Math.round(f2) + 'px -apple-system, "PingFang SC", sans-serif';
+    ctx.fillText(winInfo.name + ' · ' + winInfo.fan + ' 番', W / 2, y);
+    y += f2 + 10;
+  }
+
+  if (winInfo && winInfo.bonusTiles) {
+    const list = winInfo.bonusTiles.map(kindName).join(' ');
+    ctx.fillStyle = '#9fd8b8';
+    ctx.font = Math.round(f3) + 'px -apple-system, "PingFang SC", sans-serif';
+    ctx.fillText('胡后摸 ' + winInfo.drawCount + ' 张（' + (winInfo.hasRed ? '带红中' : '无红中') + '）：' + list, W / 2, y);
+    y += f3 + 8;
+
+    if (winInfo.bonusHits > 0) {
+      ctx.fillStyle = '#ffd08a';
+      ctx.fillText('命中 1/5/9/东/中 ' + winInfo.bonusHits + ' 张 · 每家再赔 ' + winInfo.bonusHits + ' 分', W / 2, y);
+    } else {
+      ctx.fillStyle = '#7f8c85';
+      ctx.fillText('没有命中，无额外得分', W / 2, y);
+    }
+    y += f3 + 12;
   }
 
   ctx.fillStyle = '#c9c3b7';
-  ctx.font = Math.round(H * 0.033) + 'px -apple-system, "PingFang SC", sans-serif';
-  ctx.fillText(message, W / 2, H * 0.2 + slide);
+  ctx.font = Math.round(f3) + 'px -apple-system, "PingFang SC", sans-serif';
+  ctx.fillText(message, W / 2, y);
+  y += f3 + 12;
 
-  active.forEach((i, idx) => {
+  active.forEach((i) => {
     const s = seats[i];
     if (!s) return;
     const d = winInfo && winInfo.deltas ? winInfo.deltas[i] : 0;
     ctx.fillStyle = i === me ? '#f2b179' : '#9b968b';
-    ctx.font = (i === me ? 'bold ' : '') + Math.round(H * 0.035) + 'px -apple-system, "PingFang SC", sans-serif';
-    ctx.fillText(s.name + '  ' + (d > 0 ? '+' : '') + d + '  （总 ' + s.score + '）', W / 2, H * 0.28 + idx * H * 0.06 + slide);
+    ctx.font = (i === me ? 'bold ' : '') + Math.round(f3) + 'px -apple-system, "PingFang SC", sans-serif';
+    ctx.fillText(s.name + '  ' + (d > 0 ? '+' : '') + d + '  （总 ' + s.score + '）', W / 2, y);
+    y += f3 + 8;
   });
 
-  const bw = W * 0.155, bh = H * 0.095;
+  y += H * 0.02;
+  const bw = Math.min(W * 0.155, 200);
+  const bh = Math.min(H * 0.095, 50);
   const bx = (W - bw) / 2;
-  const by = H * 0.28 + active.length * H * 0.06 + H * 0.04 + slide;
   ctx.fillStyle = '#f2b179';
-  rr(ctx, bx, by, bw, bh, 10);
+  rr(ctx, bx, y, bw, bh, 10);
   ctx.fill();
   ctx.fillStyle = '#241a10';
-  ctx.font = 'bold ' + Math.round(H * 0.038) + 'px -apple-system, "PingFang SC", sans-serif';
+  ctx.font = 'bold ' + Math.round(f3) + 'px -apple-system, "PingFang SC", sans-serif';
   ctx.textBaseline = 'middle';
-  ctx.fillText('返回', W / 2, by + bh / 2);
+  ctx.fillText('返回', W / 2, y + bh / 2);
   ctx.textBaseline = 'top';
-  hits.push({ x: bx, y: by, w: bw, h: bh, action: 'back' });
+  hits.push({ x: bx, y, w: bw, h: bh, action: 'back' });
 }
 
 /* ================= 大厅 ================= */
