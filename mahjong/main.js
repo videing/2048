@@ -1417,6 +1417,32 @@ function draw(now) {
   });
   ctx.fillStyle = vig;
   ctx.fillRect(0, 0, W, H);
+
+  drawRotateHint(now);
+}
+
+let hintT0 = Date.now();
+
+function drawRotateHint(now) {
+  if (H <= W * 1.05) return;
+  const t = now - hintT0;
+  if (t > 4200) return;
+  const a = t < 3200 ? 1 : (4200 - t) / 1000;
+
+  ctx.save();
+  ctx.globalAlpha = Math.max(0, a) * 0.9;
+  const hw = Math.min(W * 0.82, 340);
+  const hh = Math.min(H * 0.065, 56);
+  rr(ctx, (W - hw) / 2, 14, hw, hh, 12);
+  ctx.fillStyle = 'rgba(0,0,0,0.78)';
+  ctx.fill();
+  ctx.fillStyle = '#f2b179';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = 'bold ' + Math.round(Math.min(H * 0.026, 15)) + 'px -apple-system, "PingFang SC", sans-serif';
+  ctx.fillText('建议横屏 · 竖屏也能玩', W / 2, 14 + hh / 2);
+  ctx.restore();
+  ctx.textBaseline = 'top';
 }
 
 /* ================= 输入 ================= */
@@ -1490,14 +1516,41 @@ canvas.addEventListener('pointerdown', (e) => {
   onTap(e.clientX - r.left, e.clientY - r.top);
 });
 
-window.addEventListener('resize', () => {
+// 尺寸变化：resize 不一定触发（手机转屏/微信内嵌），再加轮询兜底
+let lastVW = window.innerWidth;
+let lastVH = window.innerHeight;
+
+function onViewportChange() {
+  const wasPortrait = H > W * 1.05;
   layout();
-});
+  const isPortrait = H > W * 1.05;
+  if (wasPortrait !== isPortrait) hintT0 = Date.now();
+}
+
+window.addEventListener('resize', onViewportChange);
+window.addEventListener('orientationchange', () => setTimeout(onViewportChange, 150));
+
+setInterval(() => {
+  if (window.innerWidth !== lastVW || window.innerHeight !== lastVH) {
+    lastVW = window.innerWidth;
+    lastVH = window.innerHeight;
+    onViewportChange();
+  }
+}, 400);
 
 /* ================= 启动 ================= */
 
 layout();
 phase = 'lobby';
+
+if (!window.Peer) {
+  document.body.innerHTML =
+    '<div style="display:flex;height:100%;align-items:center;justify-content:center;' +
+    'color:#f2b179;font:600 16px -apple-system,sans-serif;text-align:center;padding:24px;">' +
+    '联机组件加载失败<br><span style="font-size:13px;color:#9b968b;font-weight:400">' +
+    '请刷新页面重试（网络问题）</span></div>';
+  throw new Error('PeerJS missing');
+}
 
 // 调试用：?auto=1 直接开一局单机（?wild=0 关闭癞子）
 if (location.search.indexOf('auto') >= 0) {
