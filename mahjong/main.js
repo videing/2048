@@ -14,7 +14,6 @@ let TABLE_X, TABLE_W, TABLE_Y, TABLE_H, HAND_Y, HAND_H, HAND_W, BTN_Y, BTN_H, TI
 function layout() {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
-  // 以横屏为基准，保证宽高比不低于 1.6
   W = vw; H = vh;
   canvas.width = Math.round(vw * DPR);
   canvas.height = Math.round(vh * DPR);
@@ -22,18 +21,36 @@ function layout() {
   canvas.style.height = vh + 'px';
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
 
-  M = Math.round(W * 0.009);
-  TABLE_X = Math.round(W * 0.155);
-  TABLE_W = W - TABLE_X * 2;
-  TABLE_Y = Math.round(H * 0.11);
-  TABLE_H = Math.round(H * 0.585);
-  HAND_Y = Math.round(H * 0.805);
-  HAND_H = Math.round(H * 0.145);
-  HAND_W = Math.round(W * 0.047);
-  BTN_Y = Math.round(H * 0.715);
-  BTN_H = Math.round(H * 0.07);
-  TILE_W = Math.round(W * 0.021);
-  TILE_H = Math.round(H * 0.062);
+  const portrait = H > W * 1.05;
+
+  if (portrait) {
+    // 竖屏：牌桌在上，手牌在下
+    M = Math.round(W * 0.012);
+    TABLE_X = Math.round(W * 0.03);
+    TABLE_W = W - TABLE_X * 2;
+    TABLE_Y = Math.round(H * 0.14);
+    TABLE_H = Math.round(H * 0.38);
+    HAND_Y = Math.round(H * 0.755);
+    HAND_H = Math.round(H * 0.105);
+    HAND_W = Math.round(W * 0.062);
+    BTN_Y = Math.round(H * 0.665);
+    BTN_H = Math.round(H * 0.055);
+    TILE_W = Math.round(Math.min(W * 0.042, H * 0.028));
+    TILE_H = Math.round(TILE_W * 1.34);
+  } else {
+    M = Math.round(W * 0.009);
+    TABLE_X = Math.round(W * 0.155);
+    TABLE_W = W - TABLE_X * 2;
+    TABLE_Y = Math.round(H * 0.11);
+    TABLE_H = Math.round(H * 0.585);
+    HAND_Y = Math.round(H * 0.805);
+    HAND_H = Math.round(H * 0.145);
+    HAND_W = Math.round(W * 0.047);
+    BTN_Y = Math.round(H * 0.715);
+    BTN_H = Math.round(H * 0.07);
+    TILE_W = Math.round(W * 0.021);
+    TILE_H = Math.round(H * 0.062);
+  }
 }
 
 /* ================= 状态 ================= */
