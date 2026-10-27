@@ -1097,25 +1097,36 @@ function drawLobby(now) {
   ctx.fillStyle = '#0b1410';
   ctx.fillRect(0, 0, W, H);
 
+  const titleSize = Math.min(H * 0.13, 56);
+  const subSize = Math.min(H * 0.042, 18);
+  const codeSize = Math.min(H * 0.2, 72);
+  const btnH = Math.min(H * 0.11, 56);
+  const btnW = Math.min(W * 0.16, 180);
+  const btnFont = Math.min(H * 0.045, 20);
+
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
   ctx.fillStyle = '#f2b179';
-  ctx.font = 'bold ' + Math.round(H * 0.11) + 'px -apple-system, "PingFang SC", sans-serif';
-  ctx.fillText('四人麻将', W / 2, H * 0.12);
+  ctx.font = 'bold ' + Math.round(titleSize) + 'px -apple-system, "PingFang SC", sans-serif';
+  ctx.fillText('四人麻将', W / 2, H * 0.1);
 
   ctx.fillStyle = '#9b968b';
-  ctx.font = Math.round(H * 0.04) + 'px -apple-system, "PingFang SC", sans-serif';
+  ctx.font = Math.round(subSize) + 'px -apple-system, "PingFang SC", sans-serif';
   const sub = phase === 'hostWait'
-    ? '房间号 ' + roomCode + ' · 已加入 ' + (conns.length + 1) + '/4'
+    ? '已加入 ' + (conns.length + 1) + '/4 人 · 把房间号发给朋友'
     : phase === 'joinWait'
       ? '正在连接 ' + roomCode + '…'
-      : '联机版 · 同一房间 4 人，空位自动补电脑';
-  ctx.fillText(sub, W / 2, H * 0.2);
+      : '同一房间 4 人 · 空位自动补电脑';
+  ctx.fillText(sub, W / 2, H * 0.1 + titleSize + 14);
 
   if (phase === 'hostWait') {
     ctx.fillStyle = '#ffd08a';
-    ctx.font = 'bold ' + Math.round(H * 0.2) + 'px monospace';
-    ctx.fillText(roomCode, W / 2, H * 0.3);
+    ctx.font = 'bold ' + Math.round(codeSize) + 'px monospace';
+    ctx.fillText(roomCode, W / 2, H * 0.34);
+
+    ctx.fillStyle = '#6f8a7c';
+    ctx.font = Math.round(subSize * 0.9) + 'px -apple-system, "PingFang SC", sans-serif';
+    ctx.fillText('房间号', W / 2, H * 0.34 - 24);
   }
 
   const btns = [];
@@ -1129,43 +1140,29 @@ function drawLobby(now) {
     btns.push({ label: '取消', action: 'back', color: '#3a3a3a' });
   }
 
-  const bw = W * 0.16, bh = H * 0.11, gap = W * 0.02;
-  const total = btns.length * bw + (btns.length - 1) * gap;
+  const gap = 16;
+  const total = btns.length * btnW + (btns.length - 1) * gap;
   let x = (W - total) / 2;
-  const y = H * 0.58;
+  const y = H * 0.62;
 
   btns.forEach(b => {
     ctx.fillStyle = b.color;
-    rr(ctx, x, y, bw, bh, 10);
+    rr(ctx, x, y, btnW, btnH, 10);
     ctx.fill();
     ctx.fillStyle = b.dark ? '#241a10' : '#fff';
-    ctx.font = 'bold ' + Math.round(H * 0.042) + 'px -apple-system, "PingFang SC", sans-serif';
+    ctx.font = 'bold ' + Math.round(btnFont) + 'px -apple-system, "PingFang SC", sans-serif';
     ctx.textBaseline = 'middle';
-    ctx.fillText(b.label, x + bw / 2, y + bh / 2);
+    ctx.fillText(b.label, x + btnW / 2, y + btnH / 2);
     ctx.textBaseline = 'top';
-    hits.push({ x, y, w: bw, h: bh, action: b.action });
-    x += bw + gap;
+    hits.push({ x, y, w: btnW, h: btnH, action: b.action });
+    x += btnW + gap;
   });
-
-  if (showInput) {
-    ctx.fillStyle = 'rgba(0,0,0,0.6)';
-    ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = '#f3f1ea';
-    ctx.font = 'bold ' + Math.round(H * 0.05) + 'px -apple-system, "PingFang SC", sans-serif';
-    ctx.fillText('输入房间号', W / 2, H * 0.25);
-    ctx.font = 'bold ' + Math.round(H * 0.14) + 'px monospace';
-    ctx.fillStyle = '#f2b179';
-    ctx.fillText(inputCode || '____', W / 2, H * 0.35);
-    ctx.fillStyle = '#9b968b';
-    ctx.font = Math.round(H * 0.035) + 'px -apple-system, "PingFang SC", sans-serif';
-    ctx.fillText('点击下方按钮用键盘输入', W / 2, H * 0.55);
-  }
 
   // 调试日志
   ctx.textAlign = 'left';
   ctx.fillStyle = 'rgba(160,200,175,0.7)';
-  ctx.font = Math.round(H * 0.028) + 'px monospace';
-  debugLog.forEach((line, i) => ctx.fillText(line, W * 0.02, H * 0.8 + i * H * 0.035));
+  ctx.font = Math.round(Math.min(H * 0.028, 13)) + 'px monospace';
+  debugLog.forEach((line, i) => ctx.fillText(line, W * 0.02, H * 0.86 + i * 16));
 }
 
 /* ================= 主绘制 ================= */
