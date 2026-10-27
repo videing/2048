@@ -494,6 +494,34 @@ function log(msg) {
   if (debugLog.length > 5) debugLog.shift();
 }
 
+function inviteLink() {
+  return location.origin + location.pathname + '?room=' + roomCode;
+}
+
+function copyText(text) {
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch (e) {}
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.top = '-1000px';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch (e) {
+    return false;
+  }
+}
+
 function startHost() {
   roomCode = makeCode();
   peer = new Peer('mj4-' + roomCode, { debug: 0 });
@@ -1372,6 +1400,32 @@ function drawLobby(now) {
     x += btnW + gap;
   });
 
+  // 邀请链接
+  if (phase === 'hostWait') {
+    const lw = Math.min(W * 0.62, 460);
+    const lh = Math.min(H * 0.085, 40);
+    const lx = (W - lw) / 2;
+    const ly = y + btnH + 16;
+
+    ctx.fillStyle = 'rgba(255,255,255,0.10)';
+    rr(ctx, lx, ly, lw, lh, 8);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(242,177,121,0.55)';
+    ctx.lineWidth = 1;
+    rr(ctx, lx + 0.5, ly + 0.5, lw - 1, lh - 1, 8);
+    ctx.stroke();
+    ctx.fillStyle = '#f2b179';
+    ctx.font = 'bold ' + Math.round(Math.min(H * 0.042, 16)) + 'px -apple-system, "PingFang SC", sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('📋 复制邀请链接', lx + lw / 2, ly + lh / 2);
+    ctx.textBaseline = 'top';
+    hits.push({ x: lx, y: ly, w: lw, h: lh, action: 'copyLink' });
+
+    ctx.fillStyle = '#6f8a7c';
+    ctx.font = Math.round(Math.min(H * 0.03, 11)) + 'px monospace';
+    ctx.fillText(inviteLink(), W / 2, ly + lh + 8);
+  }
+
   // 调试日志
   ctx.textAlign = 'left';
   ctx.fillStyle = 'rgba(160,200,175,0.7)';
@@ -1467,6 +1521,11 @@ function handle(h) {
     log('红中癞子：' + (wildMode ? '开' : '关'));
     return;
   }
+  if (h.action === 'copyLink') {
+    const ok = copyText(inviteLink());
+    log(ok ? '✅ 邀请链接已复制' : '复制失败，请长按下方链接');
+    return;
+  }
   if (h.action === 'exit') {
     if (window.confirm('确定退出本局？')) window.location.reload();
     return;
@@ -1556,6 +1615,17 @@ if (!window.Peer) {
 if (location.search.indexOf('auto') >= 0) {
   if (location.search.indexOf('wild=0') >= 0) wildMode = false;
   startHostGame();
+}
+
+// ?room=XXXX 直接加入房间
+const roomMatch = location.search.match(/[?&]room=([A-Za-z0-9]{3,8})/);
+if (roomMatch) {
+  startJoin(roomMatch[1]);
+}
+
+// ?host=1 直接建房（调试）
+if (location.search.indexOf('host=1') >= 0) {
+  startHost();
 }
 
 function loop() {
