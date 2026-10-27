@@ -1002,7 +1002,7 @@ function drawHumanArea() {
 
   for (let i = 0; i < reveal; i++) {
     let x = hx0 + i * (HAND_W + 2) + (drawnIdx >= 0 && i >= drawnIdx ? gapExtra : 0);
-    const y = HAND_Y;
+    let y = HAND_Y;
     let scale = 1;
 
     // 发牌：最新一张从牌墙飞入
@@ -1375,15 +1375,18 @@ function loop() {
     }
     draw(now);
   } catch (err) {
+    const stack = (err && err.stack ? String(err.stack) : '').split('\n').slice(0, 4).join(' | ');
     log('渲染错误: ' + (err && err.message ? err.message : err));
     try {
-      ctx.fillStyle = 'rgba(200,40,40,0.9)';
-      ctx.fillRect(0, 0, W, 40);
+      ctx.fillStyle = 'rgba(200,40,40,0.92)';
+      ctx.fillRect(0, 0, W, 56);
       ctx.fillStyle = '#fff';
       ctx.textAlign = 'left';
-      ctx.textBaseline = 'middle';
-      ctx.font = '14px monospace';
-      ctx.fillText('ERR: ' + (err && err.message ? err.message : String(err)), 10, 20);
+      ctx.textBaseline = 'top';
+      ctx.font = '13px monospace';
+      ctx.fillText('ERR: ' + (err && err.message ? err.message : String(err)), 10, 6);
+      ctx.fillText(stack.slice(0, 170), 10, 24);
+      ctx.fillText(stack.slice(170, 340), 10, 40);
     } catch (e2) {}
   }
   requestAnimationFrame(loop);
