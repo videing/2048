@@ -13,18 +13,39 @@
   canvas { display: block; width: 100vw; height: 100vh; }
   #rotate {
     position: fixed; inset: 0; display: none;
-    align-items: center; justify-content: center; flex-direction: column;
-    background: #0b1410; color: #f2b179; z-index: 10;
-    font-size: 20px; font-weight: 700; text-align: center; line-height: 1.8;
+    align-items: center; justify-content: center; flex-direction: column; gap: 14px;
+    background: rgba(11, 20, 16, 0.97); color: #f2b179; z-index: 10;
+    font-size: 20px; font-weight: 700; text-align: center;
   }
-  #rotate span { font-size: 13px; color: #9b968b; font-weight: 400; }
+  #rotate .sub { font-size: 13px; color: #9b968b; font-weight: 400; }
+  #rotate button {
+    margin-top: 8px; padding: 10px 22px; border-radius: 8px; border: 1px solid #f2b179;
+    background: transparent; color: #f2b179; font-size: 15px; font-weight: 600;
+  }
   @media (orientation: portrait) { #rotate { display: flex; } }
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
-<div id="rotate">📱 请横屏使用<span>把手机横过来，牌桌会自动摆好</span></div>
+<div id="rotate">
+  <div>📱 建议横屏</div>
+  <div class="sub">竖屏可以玩，横屏牌桌更舒服</div>
+  <button id="rotBtn">继续竖屏玩</button>
+</div>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script type="module" src="./main.js"></script>
+<script>
+  (function () {
+    var el = document.getElementById('rotate');
+    var btn = document.getElementById('rotBtn');
+    btn.addEventListener('click', function () {
+      el.style.display = 'none';
+    });
+    // 6 秒后自动收起，避免一直挡着
+    setTimeout(function () {
+      if (el.style.display !== 'none') el.style.display = 'none';
+    }, 6000);
+  })();
+</script>
 </body>
 </html>
