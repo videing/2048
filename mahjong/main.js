@@ -59,6 +59,7 @@ let winT = 0;
 let dealT0 = 0;
 let drewT0 = 0;
 let showExit = false;
+let wildMode = true; // 红中是否当癞子
 
 let me = 0;
 let isHost = false;
@@ -166,6 +167,7 @@ function drawFor(i) {
 
 function splitWild(tiles) {
   const counts = countsFromTiles(tiles);
+  if (!wildMode) return { counts, wild: 0 };
   const wild = counts[31] || 0;
   counts[31] = 0;
   return { counts, wild };
@@ -182,7 +184,7 @@ function claimOptions(p, tile) {
   const counts = w.counts;
   const opts = [];
 
-  if (tile === 31) {
+  if (tile === 31 && wildMode) {
     if (canWinHand(counts, s.melds.length, w.wild + 1)) opts.push({ type: 'win' });
     return opts;
   }
@@ -404,7 +406,7 @@ function aiTurn(i) {
   if (canSelfWin(i)) { doWin(i, i, true); return; }
   const counts = countsFromTiles(seats[i].hand);
   for (let k = 0; k < 34; k++) {
-    if (k === 31) continue;
+    if (k === 31 && wildMode) continue;
     if (counts[k] === 4) { concealedGang(i, k); return; }
   }
   aiDiscard(i);
@@ -543,7 +545,7 @@ function startHostGame() {
     if (seats[c.seat]) { seats[c.seat].ai = false; seats[c.seat].name = '玩家' + c.seat; }
   });
   phase = 'playing';
-  conns.forEach(c => c.conn.send({ t: 'start', seat: c.seat }));
+  conns.forEach(c => c.conn.send({ t: 'start', seat: c.seat, wild: wildMode }));
   stateVersion++;
   log('开局 · 真人 ' + (conns.length + 1) + ' 人');
 }
@@ -578,7 +580,13 @@ function startJoin(code) {
 function onClientData(msg) {
   if (msg.t === 'welcome') { me = msg.seat; log('入座 ' + NAMES[me]); return; }
   if (msg.t === 'lobby') { return; }
-  if (msg.t === 'start') { if (msg.seat) me = msg.seat; phase = 'playing'; log('开局！'); return; }
+  if (msg.t === 'start') {
+    if (msg.seat) me = msg.seat;
+    if (msg.wild === false) wildMode = false;
+    phase = 'playing';
+    log('开局！' + (wildMode ? '红中癞子' : '普通模式'));
+    return;
+  }
   if (msg.t === 'state') { applyView(msg.v); return; }
   if (msg.t === 'full') { log('房间已满'); phase = 'lobby'; return; }
 }
@@ -1297,6 +1305,27 @@ function drawLobby(now) {
     ctx.fillText('房间号', W / 2, H * 0.34 - 24);
   }
 
+  // 红中癞子开关
+  if (phase === 'lobby' || phase === 'hostWait') {
+    const tw = Math.min(W * 0.24, 200);
+    const thh = Math.min(H * 0.075, 38);
+    const tx = (W - tw) / 2;
+    const ty = H * 0.49;
+    ctx.fillStyle = wildMode ? 'rgba(242,177,121,0.18)' : 'rgba(255,255,255,0.06)';
+    rr(ctx, tx, ty, tw, thh, 8);
+    ctx.fill();
+    ctx.strokeStyle = wildMode ? '#f2b179' : 'rgba(255,255,255,0.18)';
+    ctx.lineWidth = 1;
+    rr(ctx, tx + 0.5, ty + 0.5, tw - 1, thh - 1, 8);
+    ctx.stroke();
+    ctx.fillStyle = wildMode ? '#f2b179' : '#9b968b';
+    ctx.font = 'bold ' + Math.round(Math.min(H * 0.042, 16)) + 'px -apple-system, "PingFang SC", sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('红中当癞子：' + (wildMode ? '开' : '关'), tx + tw / 2, ty + thh / 2);
+    ctx.textBaseline = 'top';
+    hits.push({ x: tx, y: ty, w: tw, h: thh, action: 'wild' });
+  }
+
   const btns = [];
   if (phase === 'lobby') {
     btns.push({ label: '创建房间', action: 'host', color: '#f2b179', dark: true });
@@ -1390,6 +1419,11 @@ function handle(h) {
     if (!muted) audio();
     return;
   }
+  if (h.action === 'wild') {
+    wildMode = !wildMode;
+    log('红中癞子：' + (wildMode ? '开' : '关'));
+    return;
+  }
   if (h.action === 'exit') {
     if (window.confirm('确定退出本局？')) window.location.reload();
     return;
@@ -1448,8 +1482,9 @@ window.addEventListener('resize', () => {
 layout();
 phase = 'lobby';
 
-// 调试用：?auto=1 直接开一局单机
+// 调试用：?auto=1 直接开一局单机（?wild=0 关闭癞子）
 if (location.search.indexOf('auto') >= 0) {
+  if (location.search.indexOf('wild=0') >= 0) wildMode = false;
   startHostGame();
 }
 
