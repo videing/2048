@@ -56,6 +56,9 @@ let message = '';
 let hits = [];
 let lastDiscardT = 0;
 let winT = 0;
+let dealT0 = 0;
+let drewT0 = 0;
+let showExit = false;
 
 let me = 0;
 let isHost = false;
@@ -143,6 +146,8 @@ function newGame() {
   for (let round = 0; round < 13; round++) active.forEach(i => seats[i].hand.push(wall.pop()));
   seats[0].hand.push(wall.pop());
   seats.forEach((s, i) => sortHand(i));
+  dealT0 = Date.now();
+  drewT0 = 0;
   stateVersion++;
 }
 
@@ -154,7 +159,8 @@ function drawFor(i) {
     return false;
   }
   seats[i].hand.push(wall.pop());
-  sortHand(i);
+  if (seats[i].ai) sortHand(i);
+  else drewT0 = Date.now();
   return true;
 }
 
@@ -183,6 +189,7 @@ function claimOptions(p, tile, canChi) {
 function discardTile(i, idx) {
   const s = seats[i];
   const tile = s.hand.splice(idx, 1)[0];
+  sortHand(i);
   s.discards.push(tile);
   lastDiscard = { tile, from: i };
   lastDiscardT = Date.now();
@@ -495,7 +502,13 @@ function startJoin(code) {
       log('已连接 ' + roomCode);
     });
     conn.on('data', (msg) => onClientData(msg));
-    conn.on('close', () => log('与房主断开'));
+    conn.on('close', () => {
+      log('与房主断开');
+      if (phase !== 'lobby') {
+        phase = 'lobby';
+        seats = [];
+      }
+    });
     window.__conn = conn;
   });
   peer.on('error', (e) => {
@@ -959,6 +972,9 @@ function drawHumanArea() {
   if (!s) return;
   hits = hits.filter(h => h.action !== 'tile');
 
+  const now = Date.now();
+
+  // 副露
   let mx = W * 0.01;
   const my = BTN_Y + 2;
   s.melds.forEach(m => {
@@ -970,13 +986,51 @@ function drawHumanArea() {
     mx += 5;
   });
 
-  const n = s.hand.length;
-  const totalW = n * (HAND_W + 2);
+  // 发牌动画：逐张亮出
+  const dealing = now - dealT0 < 1000;
+  const total = s.hand.length;
+  const reveal = dealing ? Math.min(total, Math.floor((now - dealT0) / 68)) : total;
+
+  // 手牌布局（留出摸牌间隙）
+  const drawnIdx = !dealing && drewT0 && now - drewT0 < 1500 ? total - 1 : -1;
+  const gapExtra = drawnIdx >= 0 ? 10 : 0;
+  const totalW = total * (HAND_W + 2) + gapExtra;
   const hx0 = (W - totalW) / 2;
-  for (let i = 0; i < n; i++) {
-    const x = hx0 + i * (HAND_W + 2);
-    drawTileFace(x, HAND_Y, HAND_W, HAND_H, s.hand[i], {});
-    hits.push({ x, y: HAND_Y, w: HAND_W, h: HAND_H, action: 'tile', idx: i });
+
+  const wallX = W / 2;
+  const wallY = TABLE_Y + TABLE_H / 2;
+
+  for (let i = 0; i < reveal; i++) {
+    let x = hx0 + i * (HAND_W + 2) + (drawnIdx >= 0 && i >= drawnIdx ? gapExtra : 0);
+    const y = HAND_Y;
+    let scale = 1;
+
+    // 发牌：最新一张从牌墙飞入
+    if (dealing && i === reveal - 1) {
+      const p = 1 - Math.pow(1 - Math.min(1, (now - dealT0 - (reveal - 1) * 68) / 140), 3);
+      x = wallX + (x - wallX) * p;
+      y = wallY + (y - wallY) * p;
+      scale = 0.7 + 0.3 * p;
+    }
+
+    // 摸牌：从牌墙飞入
+    if (drawnIdx >= 0 && i === drawnIdx) {
+      const p = 1 - Math.pow(1 - Math.min(1, (now - drewT0) / 240), 3);
+      x = wallX + (x - wallX) * p;
+      y = wallY + (y - wallY) * p;
+      scale = 0.8 + 0.2 * p;
+    }
+
+    if (scale !== 1) {
+      ctx.save();
+      ctx.translate(x + HAND_W / 2, y + HAND_H / 2);
+      ctx.scale(scale, scale);
+      drawTileFace(-HAND_W / 2, -HAND_H / 2, HAND_W, HAND_H, s.hand[i], {});
+      ctx.restore();
+    } else {
+      drawTileFace(x, y, HAND_W, HAND_H, s.hand[i], {});
+    }
+    hits.push({ x, y, w: HAND_W, h: HAND_H, action: 'tile', idx: i });
   }
 
   drawAvatar(26, HAND_Y + 26, 15, me);
@@ -996,6 +1050,33 @@ function drawHumanArea() {
       ctx.fillText('听 ' + waits.map(kindName).join('/'), 46, HAND_Y + 42);
     }
   }
+}
+
+function drawControls() {
+  const bw = 46, bh = 24, y = 6;
+  const exitX = W - bw - 8;
+  const muteX = exitX - bw - 8;
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  ctx.fillStyle = 'rgba(255,255,255,0.10)';
+  rr(ctx, muteX, y, bw, bh, 6);
+  ctx.fill();
+  ctx.fillStyle = '#e7e2d6';
+  ctx.font = '13px -apple-system, "PingFang SC", sans-serif';
+  ctx.fillText(muted ? '🔇' : '🔊', muteX + bw / 2, y + bh / 2 + 1);
+  hits.push({ x: muteX, y, w: bw, h: bh, action: 'mute' });
+
+  ctx.fillStyle = 'rgba(255,255,255,0.10)';
+  rr(ctx, exitX, y, bw, bh, 6);
+  ctx.fill();
+  ctx.fillStyle = '#e7e2d6';
+  ctx.font = '12px -apple-system, "PingFang SC", sans-serif';
+  ctx.fillText('退出', exitX + bw / 2, y + bh / 2 + 1);
+  hits.push({ x: exitX, y, w: bw, h: bh, action: 'exit' });
+
+  ctx.textBaseline = 'top';
 }
 
 function drawButtons() {
@@ -1190,6 +1271,7 @@ function draw(now) {
     drawWall();
     drawSeats();
     drawHumanArea();
+    drawControls();
     drawButtons();
     if (phase === 'over') drawOver(now);
   }
@@ -1216,6 +1298,15 @@ function onTap(x, y) {
 }
 
 function handle(h) {
+  if (h.action === 'mute') {
+    muted = !muted;
+    if (!muted) audio();
+    return;
+  }
+  if (h.action === 'exit') {
+    if (window.confirm('确定退出本局？')) window.location.reload();
+    return;
+  }
   if (h.action === 'tile') {
     if (phase !== 'playing' || turn !== me) return;
     const k = seats[me].hand[h.idx];
