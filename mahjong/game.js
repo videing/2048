@@ -282,6 +282,7 @@ function unlockAudio() {
     try { c.resume(); } catch (e) {}
   }
   ttsUnlock();
+  loadVoices();
   // iOS 还需要一个 HTMLAudio 解锁
   try {
     if (!window.__silentUnlocked) {
@@ -315,6 +316,45 @@ function beep(freq, dur, type, vol) {  const c = audio();
   } catch (e) {}
 }
 
+const VOICE_RATE=8000;const VOICE_SEG=[[0,2053],[2453,2283],[5136,4036],[9572,3737],[13709,3381],[17490,3590],[21480,3696],[25576,3511],[29487,3651],[33538,3641],[37579,3852],[41831,4357],[46588,4225],[51213,3710],[55323,3992],[59715,4113],[64228,3716],[68344,4143],[72887,4022],[77309,4268],[81977,4785],[87162,4561],[92123,4187],[96710,4400],[101510,4534],[106444,4243],[111087,4586],[116073,3850],[120323,3952],[124675,4307],[129382,3910],[133692,4114],[138206,4324],[142930,3554]];
+
+let voiceBuf = null;
+let voiceLoading = false;
+
+function loadVoices() {
+  if (voiceBuf || voiceLoading) return;
+  const c = audio();
+  if (!c) return;
+  voiceLoading = true;
+  try {
+    fetch('./voices.wav')
+      .then(r => r.arrayBuffer())
+      .then(b => c.decodeAudioData(b))
+      .then(buf => { voiceBuf = buf; })
+      .catch(() => {})
+      .then(() => { voiceLoading = false; });
+  } catch (e) {
+    voiceLoading = false;
+  }
+}
+
+function playVoice(k) {
+  if (!voiceBuf) return false;
+  const c = audio();
+  if (!c) return false;
+  const seg = VOICE_SEG[k];
+  if (!seg || !seg[1]) return false;
+  try {
+    const src = c.createBufferSource();
+    src.buffer = voiceBuf;
+    src.connect(c.destination);
+    src.start(0, seg[0] / VOICE_RATE, seg[1] / VOICE_RATE);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 /* 报牌：出什么牌念什么 */
 const SPEAK_HONOR = ['东', '南', '西', '北', '红中', '发财', '白板'];
 const SPEAK_CN = ['一', '二', '三', '四', '五', '六', '七', '八', '九'];
@@ -343,6 +383,10 @@ function speakTile(k) {
   speakT0 = Date.now();
 
   if (muted) return;
+
+  // 优先用内置语音包（真机最可靠）
+  if (playVoice(k)) return;
+
   if (!window.speechSynthesis || !window.SpeechSynthesisUtterance) return;
   try {
     const s = window.speechSynthesis;
