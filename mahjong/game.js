@@ -5,7 +5,7 @@
  */
 
 const SUIT_NAMES = ['万', '筒', '条'];
-const HONOR_NAMES = ['东', '南', '西', '北', '中', '发', '白'];
+const HONOR_NAMES = ['东', '南', '西', '北', '中', '發', '白'];
 
 const KINDS = 34;
 
@@ -1171,7 +1171,7 @@ function drawTileFace(x, y, w, h, k, opt) {
   if (k < 0) return;
 
   if (k >= 27) {
-    const names = ['东', '南', '西', '北', '中', '发', '白'];
+    const names = ['东', '南', '西', '北', '中', '發', '白'];
     const nm = names[k - 27];
     if (nm === '白') {
       const s = Math.min(w, faceH) * 0.52;
