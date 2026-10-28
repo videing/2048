@@ -235,6 +235,8 @@ let winInfo = null;
 let message = '';
 let hits = [];
 let lastDiscardT = 0;
+let discardSeq = 0;
+let ttsWarmed = false;
 let winT = 0;
 let dealT0 = 0;
 let drewT0 = 0;
@@ -268,8 +270,7 @@ function audio() {
   return actx;
 }
 
-function beep(freq, dur, type, vol) {
-  const c = audio();
+function beep(freq, dur, type, vol) {  const c = audio();
   if (!c) return;
   try {
     const t0 = c.currentTime;
@@ -285,6 +286,43 @@ function beep(freq, dur, type, vol) {
     gain.connect(c.destination);
     osc.start(t0);
     osc.stop(t0 + dur + 0.03);
+  } catch (e) {}
+}
+
+/* 报牌：出什么牌念什么 */
+const SPEAK_HONOR = ['东', '南', '西', '北', '红中', '发财', '白板'];
+const SPEAK_CN = ['一', '二', '三', '四', '五', '六', '七', '八', '九'];
+const SPEAK_SUIT = ['万', '筒', '条'];
+
+function speakName(k) {
+  if (k >= 27) return SPEAK_HONOR[k - 27];
+  return SPEAK_CN[k % 9] + SPEAK_SUIT[Math.floor(k / 9)];
+}
+
+function ttsUnlock() {
+  if (ttsWarmed || !window.speechSynthesis) return;
+  ttsWarmed = true;
+  try {
+    const u = new SpeechSynthesisUtterance(' ');
+    u.volume = 0;
+    u.lang = 'zh-CN';
+    window.speechSynthesis.speak(u);
+  } catch (e) {}
+}
+
+function speakTile(k) {
+  if (muted) return;
+  if (k == null || k < 0) return;
+  if (!window.speechSynthesis || !window.SpeechSynthesisUtterance) return;
+  try {
+    const s = window.speechSynthesis;
+    s.cancel();
+    const u = new SpeechSynthesisUtterance(speakName(k));
+    u.lang = 'zh-CN';
+    u.rate = 1.3;
+    u.pitch = 1.05;
+    u.volume = 0.95;
+    s.speak(u);
   } catch (e) {}
 }
 
@@ -409,9 +447,10 @@ function discardTile(i, idx) {
   const tile = s.hand.splice(idx, 1)[0];
   sortHand(i);
   s.discards.push(tile);
-  lastDiscard = { tile, from: i };
+  lastDiscard = { tile, from: i, seq: ++discardSeq };
   lastDiscardT = Date.now();
   sfx.tile();
+  speakTile(tile);
 
   const claims = [];
   const base = active.indexOf(i);
@@ -938,6 +977,10 @@ function broadcastState() {
 }
 
 function applyView(v) {
+  const prevSeq = lastDiscard && lastDiscard.seq;
+  if (v.lastDiscard && v.lastDiscard.seq !== prevSeq) {
+    speakTile(v.lastDiscard.tile);
+  }
   seats = v.seats.map(s => ({
     name: s.name, score: s.score, melds: s.melds, discards: s.discards,
     hand: new Array(s.handCount).fill(-1), ai: s.ai
@@ -1875,6 +1918,7 @@ function sendAct(a, extra) {
 
 canvas.addEventListener('pointerdown', (e) => {
   audio();
+  ttsUnlock();
   const r = canvas.getBoundingClientRect();
   onTap(e.clientX - r.left, e.clientY - r.top);
 });
