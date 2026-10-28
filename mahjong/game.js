@@ -237,6 +237,8 @@ let hits = [];
 let lastDiscardT = 0;
 let discardSeq = 0;
 let ttsWarmed = false;
+let speakText = '';
+let speakT0 = 0;
 let winT = 0;
 let dealT0 = 0;
 let drewT0 = 0;
@@ -264,10 +266,40 @@ let muted = false;
 function audio() {
   if (muted) return null;
   if (!actx) {
-    try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { actx = null; }
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      actx = new AC();
+    } catch (e) {
+      actx = null;
+      return null;
+    }
   }
-  if (actx && actx.state === 'suspended') actx.resume();
+  if (actx.state === 'suspended') {
+    try { actx.resume(); } catch (e) {}
+  }
   return actx;
+}
+
+function unlockAudio() {
+  // iOS / 微信：必须在用户手势里创建并 resume
+  const c = audio();
+  if (c && c.state === 'suspended') {
+    try { c.resume(); } catch (e) {}
+  }
+  ttsUnlock();
+  // iOS 还需要一个 HTMLAudio 解锁
+  try {
+    if (!window.__silentUnlocked) {
+      window.__silentUnlocked = true;
+      const a = document.createElement('audio');
+      a.setAttribute('playsinline', '');
+      a.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+      a.volume = 0.01;
+      const p = a.play();
+      if (p && p.catch) p.catch(() => {});
+    }
+  } catch (e) {}
 }
 
 function beep(freq, dur, type, vol) {  const c = audio();
@@ -311,8 +343,12 @@ function ttsUnlock() {
 }
 
 function speakTile(k) {
-  if (muted) return;
   if (k == null || k < 0) return;
+  // 视觉报牌（听不到声音时也能看到）
+  speakText = speakName(k);
+  speakT0 = Date.now();
+
+  if (muted) return;
   if (!window.speechSynthesis || !window.SpeechSynthesisUtterance) return;
   try {
     const s = window.speechSynthesis;
@@ -1329,6 +1365,18 @@ function drawWall() {
     ctx.font = Math.round(H * 0.028) + 'px -apple-system, "PingFang SC", sans-serif';
     ctx.fillText(message, cx, cy + bh + 26);
   }
+
+  // 报牌（听不到声音也能看到念的是什么）
+  const dt2 = Date.now() - speakT0;
+  if (speakText && dt2 < 1400) {
+    const a2 = dt2 < 1000 ? 1 : (1400 - dt2) / 400;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, a2);
+    ctx.fillStyle = '#ffd08a';
+    ctx.font = 'bold ' + Math.round(H * 0.042) + 'px -apple-system, "PingFang SC", sans-serif';
+    ctx.fillText('📢 ' + speakText, cx, cy + bh + 48);
+    ctx.restore();
+  }
 }
 
 function drawAvatar(x, y, r, seat) {
@@ -1497,15 +1545,17 @@ function drawControls() {
   const exitX = W - bw - 8;
   const muteX = exitX - bw - 8;
 
+  const soundOk = !muted && actx && actx.state === 'running';
+
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
 
-  ctx.fillStyle = 'rgba(255,255,255,0.10)';
+  ctx.fillStyle = soundOk ? 'rgba(255,255,255,0.10)' : 'rgba(217,74,52,0.75)';
   rr(ctx, muteX, y, bw, bh, 6);
   ctx.fill();
   ctx.fillStyle = '#e7e2d6';
   ctx.font = '13px -apple-system, "PingFang SC", sans-serif';
-  ctx.fillText(muted ? '🔇' : '🔊', muteX + bw / 2, y + bh / 2 + 1);
+  ctx.fillText(soundOk ? '🔊' : '🔇', muteX + bw / 2, y + bh / 2 + 1);
   hits.push({ x: muteX, y, w: bw, h: bh, action: 'mute' });
 
   ctx.fillStyle = 'rgba(255,255,255,0.10)';
@@ -1856,8 +1906,14 @@ function onTap(x, y) {
 
 function handle(h) {
   if (h.action === 'mute') {
-    muted = !muted;
-    if (!muted) audio();
+    const soundOk = !muted && actx && actx.state === 'running';
+    if (soundOk) {
+      muted = true;
+    } else {
+      muted = false;
+      unlockAudio();
+      beep(880, 0.12, 'sine', 0.06);
+    }
     return;
   }
   if (h.action === 'wild') {
@@ -1917,11 +1973,15 @@ function sendAct(a, extra) {
 }
 
 canvas.addEventListener('pointerdown', (e) => {
-  audio();
-  ttsUnlock();
+  unlockAudio();
   const r = canvas.getBoundingClientRect();
   onTap(e.clientX - r.left, e.clientY - r.top);
 });
+
+// 任何点击/触摸都尝试解锁（覆盖顶部按钮、页面空白处）
+window.addEventListener('pointerdown', unlockAudio, true);
+window.addEventListener('touchstart', unlockAudio, true);
+window.addEventListener('click', unlockAudio, true);
 
 // 尺寸变化：resize 不一定触发（手机转屏/微信内嵌），再加轮询兜底
 let lastVW = window.innerWidth;
