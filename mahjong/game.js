@@ -233,6 +233,7 @@ let discardSeq = 0;
 let ttsWarmed = false;
 let speakText = '';
 let speakT0 = 0;
+let roundNo = 1;
 let winT = 0;
 let dealT0 = 0;
 let drewT0 = 0;
@@ -446,10 +447,17 @@ function sortHand(i) {
   seats[i].hand.sort((a, b) => a - b);
 }
 
-function newGame() {
+function newGame(keepScores) {
+  const oldScores = keepScores && seats.length === 4 ? seats.map(s => s.score) : null;
+
   seats = [];
   for (let i = 0; i < 4; i++) {
-    seats.push({ hand: [], melds: [], discards: [], score: 0, ai: i !== 0, name: NAMES[i] });
+    seats.push({
+      hand: [], melds: [], discards: [],
+      score: oldScores ? (oldScores[i] || 0) : 0,
+      ai: i !== 0,
+      name: NAMES[i]
+    });
   }
   active = [0, 1, 2, 3];
   wall = shuffle(makeWall());
@@ -925,6 +933,7 @@ function hostApply(seat, msg) {
 }
 
 function startHostGame() {
+  roundNo = 1;
   newGame();
   conns.forEach(c => {
     if (seats[c.seat]) { seats[c.seat].ai = false; seats[c.seat].name = '玩家' + c.seat; }
@@ -1370,7 +1379,7 @@ function drawWall() {
   ctx.textBaseline = 'top';
   ctx.fillStyle = '#e9e3d4';
   ctx.font = 'bold ' + Math.round(H * 0.033) + 'px -apple-system, "PingFang SC", sans-serif';
-  ctx.fillText('剩 ' + remain + ' 张', cx, cy + bh + 8);
+  ctx.fillText('第 ' + roundNo + ' 局 · 剩 ' + remain + ' 张', cx, cy + bh + 8);
 
   if (message) {
     ctx.fillStyle = '#9fd8b8';
@@ -1684,18 +1693,39 @@ function drawOver(now) {
   });
 
   y += H * 0.02;
-  const bw = Math.min(W * 0.155, 200);
+  const boss = isHost || !isOnline;
+  const bw = Math.min(W * 0.17, 190);
   const bh = Math.min(H * 0.095, 50);
-  const bx = (W - bw) / 2;
-  ctx.fillStyle = '#f2b179';
+  const gap = 14;
+  const total = boss ? bw * 2 + gap : bw;
+  let bx = (W - total) / 2;
+
+  ctx.textBaseline = 'middle';
+  if (boss) {
+    ctx.fillStyle = '#f2b179';
+    rr(ctx, bx, y, bw, bh, 10);
+    ctx.fill();
+    ctx.fillStyle = '#241a10';
+    ctx.font = 'bold ' + Math.round(f3) + 'px -apple-system, "PingFang SC", sans-serif';
+    ctx.fillText('再来一局', bx + bw / 2, y + bh / 2);
+    hits.push({ x: bx, y, w: bw, h: bh, action: 'nextRound' });
+    bx += bw + gap;
+  }
+
+  ctx.fillStyle = 'rgba(255,255,255,0.14)';
   rr(ctx, bx, y, bw, bh, 10);
   ctx.fill();
-  ctx.fillStyle = '#241a10';
+  ctx.fillStyle = '#e7e2d6';
   ctx.font = 'bold ' + Math.round(f3) + 'px -apple-system, "PingFang SC", sans-serif';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('返回', W / 2, y + bh / 2);
-  ctx.textBaseline = 'top';
+  ctx.fillText(boss ? '退出' : '返回大厅', bx + bw / 2, y + bh / 2);
   hits.push({ x: bx, y, w: bw, h: bh, action: 'back' });
+  ctx.textBaseline = 'top';
+
+  if (!boss) {
+    ctx.fillStyle = '#9b968b';
+    ctx.font = Math.round(f3 * 0.85) + 'px -apple-system, "PingFang SC", sans-serif';
+    ctx.fillText('等待房主开始下一局…（分数会累加）', W / 2, y + bh + 10);
+  }
 }
 
 /* ================= 大厅 ================= */
@@ -1939,7 +1969,34 @@ function handle(h) {
     return;
   }
   if (h.action === 'startGame') { startHostGame(); return; }
-  if (h.action === 'back') { location.reload(); return; }
+  if (h.action === 'nextRound') {
+    roundNo++;
+    newGame(true);
+    if (isOnline && isHost) {
+      conns.forEach(c => {
+        if (seats[c.seat]) {
+          seats[c.seat].ai = false;
+          seats[c.seat].name = '玩家' + c.seat;
+        }
+        c.conn.send({ t: 'start', seat: c.seat, wild: wildMode });
+      });
+      stateVersion++;
+    }
+    return;
+  }
+  if (h.action === 'back') {
+    if (isOnline) {
+      phase = 'lobby';
+      isOnline = false;
+      isHost = false;
+      conns = [];
+      seats = [];
+      roundNo = 1;
+      return;
+    }
+    window.location.reload();
+    return;
+  }
 
   if (!isHost && isOnline) {
     if (h.action === 'win') return;
