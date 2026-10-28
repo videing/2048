@@ -824,6 +824,25 @@ function pickAiDiscard(s) {
 
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
+// 国内可用的 STUN（Google 的在国内基本不通）
+const ICE_CONFIG = {
+  iceServers: [
+    { urls: 'stun:stun.qq.com:3478' },
+    { urls: 'stun:stun.miwifi.com:3478' },
+    { urls: 'stun:stun.chat.bilibili.com:3478' },
+    { urls: 'stun:stun.hitv.com:3478' },
+    { urls: 'stun:stun.cdnbye.com:3478' },
+    { urls: 'stun:stun.l.google.com:19302' }
+  ],
+  iceCandidatePoolSize: 4
+};
+
+function peerOpts(id) {
+  const o = { debug: 0, config: ICE_CONFIG };
+  if (id) o.id = id;
+  return o;
+}
+
 function makeCode() {
   let s = '';
   for (let i = 0; i < 4; i++) s += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
@@ -897,7 +916,19 @@ function bindHostEvents() {
     });
   });
 
-  peer.on('error', (e) => log('错误: ' + e.type));
+  peer.on('error', (e) => {
+    const map = {
+      network: '网络错误：信令服务器连不上',
+      'server-error': '信令服务器异常',
+      'browser-incompatible': '浏览器不支持 WebRTC',
+      'unavailable-id': '房间号冲突'
+    };
+    log('错误: ' + (map[e.type] || e.type));
+    if (e.type === 'unavailable-id') {
+      roomCode = makeCode();
+      setTimeout(recreateHostPeer, 400);
+    }
+  });
 
   peer.on('disconnected', () => {
     log('信令断开，重连…');
@@ -921,14 +952,14 @@ function recreateHostPeer() {
   if (peer && !peer.destroyed) {
     try { peer.destroy(); } catch (e) {}
   }
-  peer = new Peer('mj4-' + roomCode, { debug: 0 });
+  peer = new Peer('mj4-' + roomCode, peerOpts());
   bindHostEvents();
 }
 
-function startHost() {
-  roomCode = makeCode();
+function startHost(fixedCode) {
+  roomCode = fixedCode || makeCode();
   conns = [];
-  peer = new Peer('mj4-' + roomCode, { debug: 0 });
+  peer = new Peer('mj4-' + roomCode, peerOpts());
   bindHostEvents();
 }
 
@@ -988,7 +1019,7 @@ function tryJoin() {
   }
   conn = null;
 
-  peer = new Peer({ debug: 0 });
+  peer = new Peer(peerOpts());
 
   peer.on('open', () => {
     conn = peer.connect('mj4-' + roomCode, { reliable: true });
@@ -1003,6 +1034,13 @@ function tryJoin() {
       joinAttempt = 0;
       log('✅ 已连接房间 ' + roomCode);
     });
+
+    // 直连超时提示
+    setTimeout(() => {
+      if (conn && !conn.open) {
+        log('直连失败：双方网络可能互不可达');
+      }
+    }, 12000);
 
     conn.on('data', (msg) => onClientData(msg));
 
@@ -1027,7 +1065,12 @@ function tryJoin() {
       }
       return;
     }
-    log('错误: ' + e.type);
+    const map2 = {
+      network: '网络错误：信令服务器连不上',
+      'server-error': '信令服务器异常',
+      'browser-incompatible': '浏览器不支持 WebRTC'
+    };
+    log('错误: ' + (map2[e.type] || e.type));
   });
 }
 
@@ -2223,9 +2266,10 @@ if (roomMatch) {
   startJoin(roomMatch[1]);
 }
 
-// ?host=1 直接建房（调试）
-if (location.search.indexOf('host=1') >= 0) {
-  startHost();
+// ?host=1 直接建房（?host=ABCD 指定房间号，调试用）
+const hostMatch = location.search.match(/[?&]host=([A-Za-z0-9]{1,8})/);
+if (hostMatch) {
+  startHost(hostMatch[1] === '1' ? null : hostMatch[1]);
 }
 
 function loop() {
