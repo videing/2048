@@ -126,7 +126,32 @@ function beep(freq, dur, type, vol) {
 }
 
 const sfx = {
-  tile() { beep(880, 0.035, 'square', 0.035); beep(220, 0.05, 'triangle', 0.04); },
+  tile() {
+    const c = audio();
+    if (!c) return;
+    try {
+      // 出牌：木质"啪"——短噪声经带通 + 低频撞击
+      const dur = 0.07;
+      const buf = c.createBuffer(1, Math.floor(c.sampleRate * dur), c.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) {
+        d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 3.2);
+      }
+      const src = c.createBufferSource();
+      src.buffer = buf;
+      const bp = c.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = 1700;
+      bp.Q.value = 0.85;
+      const g = c.createGain();
+      g.gain.value = 0.5;
+      src.connect(bp);
+      bp.connect(g);
+      g.connect(c.destination);
+      src.start(c.currentTime);
+    } catch (e) {}
+    beep(190, 0.05, 'triangle', 0.06);
+  },
   draw() { beep(520, 0.03, 'triangle', 0.02); },
   peng() { beep(520, 0.08, 'square', 0.045); setTimeout(() => beep(680, 0.09, 'square', 0.04), 70); },
   gang() { beep(420, 0.1, 'sawtooth', 0.04); setTimeout(() => beep(620, 0.12, 'sawtooth', 0.035), 90); },
@@ -498,6 +523,35 @@ function log(msg) {
 
 function inviteLink() {
   return location.origin + location.pathname + '?room=' + roomCode;
+}
+
+function goFullscreenLandscape() {
+  const el = document.documentElement;
+  const req = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen || el.msRequestFullscreen;
+  if (!req) {
+    log('设备不支持全屏，请手动横屏');
+    return;
+  }
+  try {
+    const p = req.call(el);
+    const lock = () => {
+      try {
+        if (screen.orientation && screen.orientation.lock) {
+          screen.orientation.lock('landscape').catch(() => {});
+        }
+      } catch (e) {}
+    };
+    if (p && p.then) {
+      p.then(() => {
+        lock();
+        setTimeout(onViewportChange, 350);
+      }).catch(() => lock());
+    } else {
+      lock();
+    }
+  } catch (e) {
+    log('全屏失败，请手动横屏');
+  }
 }
 
 function copyText(text) {
@@ -1417,6 +1471,23 @@ function drawLobby(now) {
     ctx.fillText('房间号', W / 2, H * 0.34 - 24);
   }
 
+  // 竖屏时给一个「横屏全屏」按钮
+  if (H > W * 1.05 && phase === 'lobby') {
+    const bw2 = Math.min(W * 0.58, 230);
+    const bh2 = Math.min(H * 0.062, 42);
+    const bx2 = (W - bw2) / 2;
+    const by2 = H * 0.27;
+    ctx.fillStyle = 'rgba(47,125,90,0.85)';
+    rr(ctx, bx2, by2, bw2, bh2, 10);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold ' + Math.round(Math.min(H * 0.038, 15)) + 'px -apple-system, "PingFang SC", sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('⛶ 横屏全屏', bx2 + bw2 / 2, by2 + bh2 / 2);
+    ctx.textBaseline = 'top';
+    hits.push({ x: bx2, y: by2, w: bw2, h: bh2, action: 'fullscreen' });
+  }
+
   // 红中癞子开关
   if (phase === 'lobby' || phase === 'hostWait') {
     const tw = Math.min(W * 0.24, 200);
@@ -1591,6 +1662,10 @@ function handle(h) {
   if (h.action === 'copyLink') {
     const ok = copyText(inviteLink());
     log(ok ? '✅ 邀请链接已复制' : '复制失败，请长按下方链接');
+    return;
+  }
+  if (h.action === 'fullscreen') {
+    goFullscreenLandscape();
     return;
   }
   if (h.action === 'exit') {
