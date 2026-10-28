@@ -12,11 +12,27 @@
     -webkit-user-select: none; user-select: none;
     font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
   }
-  canvas { display: block; width: 100vw; height: 100vh; }
+  #stage {
+    position: fixed; top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    overflow: hidden;
+    background: #0a120e;
+  }
+  canvas { display: block; width: 100%; height: 100%; }
+
+  /* 竖屏：整体旋转 90°，强制横屏布局 */
+  @media (orientation: portrait) {
+    #stage {
+      width: 100vh;
+      height: 100vw;
+      transform-origin: 0 0;
+      transform: translateX(100vw) rotate(90deg);
+    }
+  }
 </style>
 </head>
 <body>
-<canvas id="c"></canvas>
+<div id="stage"><canvas id="c"></canvas></div>
 <script>
   window.addEventListener('error', function (e) {
     var d = document.createElement('pre');
