@@ -2,116 +2,27 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<meta name="format-detection" content="telephone=no">
-<title>四人麻将 · 联机</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>四人麻将 · 已关闭公网访问</title>
 <style>
   html, body {
-    margin: 0; height: 100%; background: #0a120e; overflow: hidden;
-    touch-action: none; -webkit-tap-highlight-color: transparent;
-    -webkit-user-select: none; user-select: none;
+    margin: 0; height: 100%; background: #0b1410; color: #f2b179;
+    display: flex; align-items: center; justify-content: center;
     font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
   }
-  #stage {
-    position: fixed; top: 0; left: 0;
-    width: 100vw; height: 100vh;
-    overflow: hidden;
-    background: #0a120e;
-  }
-  canvas { display: block; width: 100%; height: 100%; }
-
-  /* 竖屏：整体旋转 90°，强制横屏布局 */
-  @media (orientation: portrait) {
-    #stage {
-      width: 100vh;
-      height: 100vw;
-      transform-origin: 0 0;
-      transform: translateX(100vw) rotate(90deg);
-    }
-  }
-
-  /* 访问码门禁 */
-  #gate {
-    position: fixed; inset: 0; z-index: 50;
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    gap: 14px; background: #0b1410; color: #f2b179;
-  }
-  #gate.hide { display: none; }
-  #gate h2 { margin: 0 0 6px; font-size: 22px; letter-spacing: 2px; }
-  #gate .sub { color: #7f8c85; font-size: 12px; }
-  #gcode {
-    width: 200px; padding: 12px 14px; font-size: 22px; text-align: center; letter-spacing: 8px;
-    border-radius: 10px; border: 1px solid rgba(242,177,121,0.6);
-    background: rgba(255,255,255,0.06); color: #fff; outline: none;
-  }
-  #gbtn {
-    width: 200px; padding: 12px; border-radius: 10px; border: none;
-    background: #f2b179; color: #241a10; font-size: 16px; font-weight: 700;
-  }
-  #gerr { color: #ff7b6b; font-size: 13px; height: 18px; }
+  .box { text-align: center; padding: 24px; line-height: 1.9; }
+  h1 { font-size: 22px; margin: 0 0 10px; }
+  p { color: #9b968b; font-size: 13px; margin: 4px 0; }
+  code { color: #7fd6a0; font-size: 13px; }
 </style>
 </head>
 <body>
-<div id="stage"><canvas id="c"></canvas></div>
-
-<div id="gate">
-  <h2>访问受限</h2>
-  <div class="sub">请输入访问码</div>
-  <input id="gcode" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="••••">
-  <button id="gbtn">进入</button>
-  <div id="gerr"></div>
+<div class="box">
+  <h1>公网访问已关闭</h1>
+  <p>这个游戏已改为「仅局域网」使用</p>
+  <p>请在房主的电脑上启动服务器后访问：</p>
+  <p><code>http://127.0.0.1:8099/</code>（本机）</p>
+  <p><code>http://房主电脑IP:8099/</code>（同一局域网）</p>
 </div>
-
-<script>
-  (function () {
-    // 访问码（改这一行即可换码）
-    var PASS = '6688';
-    var KEY = 'mj_access_ok';
-
-    var gate = document.getElementById('gate');
-    var input = document.getElementById('gcode');
-    var btn = document.getElementById('gbtn');
-    var err = document.getElementById('gerr');
-
-    function unlock() {
-      gate.classList.add('hide');
-      try { localStorage.setItem(KEY, '1'); } catch (e) {}
-    }
-
-    try {
-      if (localStorage.getItem(KEY) === '1') unlock();
-    } catch (e) {}
-
-    if (location.search.indexOf('k=' + PASS) >= 0) unlock();
-
-    function tryEnter() {
-      var v = (input.value || '').trim();
-      if (v === PASS) {
-        unlock();
-      } else {
-        err.textContent = '访问码不对';
-        input.value = '';
-        input.focus();
-      }
-    }
-
-    btn.addEventListener('click', tryEnter);
-    input.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') tryEnter();
-    });
-    setTimeout(function () { input.focus(); }, 300);
-  })();
-</script>
-
-<script>
-  window.addEventListener('error', function (e) {
-    var d = document.createElement('pre');
-    d.style.cssText = 'position:fixed;inset:0;margin:0;padding:16px;background:#120a0a;color:#ff7b6b;font:12px/1.6 monospace;white-space:pre-wrap;z-index:99;overflow:auto';
-    d.textContent = 'JS 错误：\n' + (e.message || '') + '\n' + (e.filename || '') + ':' + (e.lineno || '') + ':' + (e.colno || '');
-    document.body.appendChild(d);
-  });
-</script>
-<script src="./peerjs.min.js?v=24"></script>
-<script src="./game.js?v=24"></script>
 </body>
 </html>
