@@ -1908,20 +1908,49 @@ function drawLobby(now) {
   ctx.fillStyle = '#9b968b';
   ctx.font = Math.round(subSize) + 'px -apple-system, "PingFang SC", sans-serif';
   const sub = phase === 'hostWait'
-    ? '已加入 ' + (conns.length + 1) + '/4 人 · 把房间号发给朋友'
+    ? '已加入 ' + (conns.length + 1) + '/4 人 · 人齐了再点「开始游戏」'
     : phase === 'joinWait'
       ? '正在连接 ' + roomCode + '…'
       : '同一房间 4 人 · 空位自动补电脑';
   ctx.fillText(sub, W / 2, H * 0.1 + titleSize + 14);
 
   if (phase === 'hostWait') {
-    ctx.fillStyle = '#ffd08a';
-    ctx.font = 'bold ' + Math.round(codeSize) + 'px monospace';
-    ctx.fillText(roomCode, W / 2, H * 0.34);
-
     ctx.fillStyle = '#6f8a7c';
     ctx.font = Math.round(subSize * 0.9) + 'px -apple-system, "PingFang SC", sans-serif';
-    ctx.fillText('房间号', W / 2, H * 0.34 - 24);
+    ctx.fillText('房间号', W / 2, H * 0.245);
+
+    ctx.fillStyle = '#ffd08a';
+    ctx.font = 'bold ' + Math.round(codeSize) + 'px monospace';
+    ctx.fillText(roomCode, W / 2, H * 0.28);
+
+    // 四个座位：谁进来了、哪个是电脑
+    const chipW = Math.min(W * 0.235, 210);
+    const chipH = Math.min(H * 0.085, 36);
+    const gapX = 12;
+    const gapY = 8;
+    const startX = (W - (chipW * 2 + gapX)) / 2;
+    const startY = H * 0.40;
+
+    ctx.textBaseline = 'middle';
+    for (let i = 0; i < 4; i++) {
+      const cx2 = startX + (i % 2) * (chipW + gapX);
+      const cy2 = startY + Math.floor(i / 2) * (chipH + gapY);
+      const joined = i === 0 || conns.some(function (c) { return c.seat === i; });
+
+      ctx.fillStyle = joined ? 'rgba(47,125,90,0.28)' : 'rgba(255,255,255,0.05)';
+      rr(ctx, cx2, cy2, chipW, chipH, 8);
+      ctx.fill();
+      ctx.strokeStyle = joined ? 'rgba(127,214,160,0.65)' : 'rgba(255,255,255,0.12)';
+      ctx.lineWidth = 1;
+      rr(ctx, cx2 + 0.5, cy2 + 0.5, chipW - 1, chipH - 1, 8);
+      ctx.stroke();
+
+      ctx.fillStyle = joined ? '#9fd8b8' : '#6f8a7c';
+      ctx.font = 'bold ' + Math.round(Math.min(H * 0.04, 15)) + 'px -apple-system, "PingFang SC", sans-serif';
+      const tag = i === 0 ? '房主' : joined ? '真人' : '电脑';
+      ctx.fillText(NAMES[i] + ' · ' + tag, cx2 + chipW / 2, cy2 + chipH / 2);
+    }
+    ctx.textBaseline = 'top';
   }
 
   // 红中癞子开关
@@ -1929,7 +1958,7 @@ function drawLobby(now) {
     const tw = Math.min(W * 0.24, 200);
     const thh = Math.min(H * 0.075, 38);
     const tx = (W - tw) / 2;
-    const ty = H * 0.49;
+    const ty = H * 0.60;
     ctx.fillStyle = wildMode ? 'rgba(242,177,121,0.18)' : 'rgba(255,255,255,0.06)';
     rr(ctx, tx, ty, tw, thh, 8);
     ctx.fill();
@@ -1959,7 +1988,7 @@ function drawLobby(now) {
   const gap = 16;
   const total = btns.length * btnW + (btns.length - 1) * gap;
   let x = (W - total) / 2;
-  const y = H * 0.62;
+  const y = H * 0.70;
 
   btns.forEach(b => {
     ctx.fillStyle = b.color;
