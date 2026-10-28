@@ -215,7 +215,7 @@ function layout() {
 const NAMES = ['你', '下家', '对家', '上家'];
 const COLORS = ['#f2b179', '#6fb2f2', '#b58cf2', '#5fd0a8'];
 const SEAT_TINT = ['#8a5a33', '#2b4f7a', '#4a3a6b', '#2b6b52'];
-const NUM_CN = ['一', '二', '三', '四', '五', '六', '七', '八', '九'];
+const NUM_CN = ['一', '二', '三', '四', '伍', '六', '七', '八', '九'];
 
 let seats = [];
 let wall = [];
@@ -1110,14 +1110,14 @@ function drawDots(cx, cy, w, h, n) {
     const x = cx + p[0] * w * 0.215;
     const y = cy + p[1] * h * 0.255;
 
-    const flip = i % 2 === 1;
-    const outer = flip ? '#1b7a45' : '#c2352b';
-    const inner = flip ? '#c2352b' : '#1b7a45';
+    // 参考实体牌：绿外环 + 白圈 + 红心 + 深色圆心
+    const navy = n >= 4 && i % 2 === 1;
+    const outer = navy ? '#20304a' : '#1b7a45';
 
     ctx.beginPath(); ctx.arc(x, y, rad, 0, Math.PI * 2); ctx.fillStyle = outer; ctx.fill();
-    ctx.beginPath(); ctx.arc(x, y, rad * 0.72, 0, Math.PI * 2); ctx.fillStyle = '#fdfaf0'; ctx.fill();
-    ctx.beginPath(); ctx.arc(x, y, rad * 0.56, 0, Math.PI * 2); ctx.fillStyle = inner; ctx.fill();
-    ctx.beginPath(); ctx.arc(x, y, rad * 0.24, 0, Math.PI * 2); ctx.fillStyle = '#1d3350'; ctx.fill();
+    ctx.beginPath(); ctx.arc(x, y, rad * 0.74, 0, Math.PI * 2); ctx.fillStyle = '#fdfaf0'; ctx.fill();
+    ctx.beginPath(); ctx.arc(x, y, rad * 0.5, 0, Math.PI * 2); ctx.fillStyle = '#c2352b'; ctx.fill();
+    ctx.beginPath(); ctx.arc(x, y, rad * 0.2, 0, Math.PI * 2); ctx.fillStyle = '#1b7a45'; ctx.fill();
   });
 }
 
@@ -1159,23 +1159,26 @@ function drawBamboo(cx, cy, w, h, n) {
   const pts = pipLayout(n);
   const bw = w * 0.135, bh = h * 0.195;
 
+  const redIdx = (n === 3 || n === 7) ? 0 : (n === 5 ? 2 : -1);
+
   pts.forEach((p, i) => {
     const x = cx + p[0] * w * 0.22;
     const y = cy + p[1] * h * 0.25;
-    const color = i === 0 ? '#b8302a' : '#1b7a45';
+    const color = i === redIdx ? '#b8302a' : '#1b7a45';
 
     ctx.fillStyle = color;
-    rr(ctx, x - bw / 2, y - bh / 2, bw, bh, bw * 0.38);
+    rr(ctx, x - bw / 2, y - bh / 2, bw, bh, bw * 0.42);
     ctx.fill();
 
-    ctx.strokeStyle = 'rgba(0,0,0,0.42)';
-    ctx.lineWidth = Math.max(1, bw * 0.15);
-    ctx.beginPath(); ctx.moveTo(x - bw / 2 + 1, y - bh * 0.18); ctx.lineTo(x + bw / 2 - 1, y - bh * 0.18); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(x - bw / 2 + 1, y + bh * 0.18); ctx.lineTo(x + bw / 2 - 1, y + bh * 0.18); ctx.stroke();
-
-    ctx.fillStyle = 'rgba(255,255,255,0.38)';
-    rr(ctx, x - bw * 0.32, y - bh / 2 + 1, bw * 0.17, bh - 2, bw * 0.1);
+    // 中间浅色竹芯
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    rr(ctx, x - bw * 0.2, y - bh / 2 + 1.5, bw * 0.4, bh - 3, bw * 0.2);
     ctx.fill();
+
+    ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+    ctx.lineWidth = Math.max(1, bw * 0.14);
+    ctx.beginPath(); ctx.moveTo(x - bw / 2 + 1, y - bh * 0.2); ctx.lineTo(x + bw / 2 - 1, y - bh * 0.2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x - bw / 2 + 1, y + bh * 0.2); ctx.lineTo(x + bw / 2 - 1, y + bh * 0.2); ctx.stroke();
   });
 }
 
@@ -1220,12 +1223,15 @@ function drawTileFace(x, y, w, h, k, opt) {
     const names = ['东', '南', '西', '北', '中', '發', '白'];
     const nm = names[k - 27];
     if (nm === '白') {
-      const s = Math.min(w, faceH) * 0.52;
-      ctx.strokeStyle = '#1b5fa8';
-      ctx.lineWidth = Math.max(1.6, w * 0.06);
+      const s = Math.min(w, faceH) * 0.62;
+      ctx.strokeStyle = '#1f2d3d';
+      ctx.lineWidth = Math.max(1.6, w * 0.055);
       ctx.strokeRect(cx - s / 2, cy - s / 2, s, s);
+      ctx.lineWidth = Math.max(1, w * 0.028);
+      const g2 = s * 0.1;
+      ctx.strokeRect(cx - s / 2 + g2, cy - s / 2 + g2, s - g2 * 2, s - g2 * 2);
     } else {
-      const honorColor = (nm === '中' || nm === '發') ? '#c2352b' : '#1f2d3d';
+      const honorColor = nm === '中' ? '#b3261e' : nm === '發' ? '#14703f' : '#1f2d3d';
       inkText(nm, cx, cy + 1, faceH * 0.6, honorColor);
     }
     return;
@@ -1234,9 +1240,9 @@ function drawTileFace(x, y, w, h, k, opt) {
   const suit = Math.floor(k / 9);
   const num = (k % 9) + 1;
   if (suit === 0) {
-    // 传统牌：红色数字 + 黑色「萬」
-    inkText(NUM_CN[num - 1], cx, y + faceH * 0.3, faceH * 0.34, '#c2352b');
-    inkText('萬', cx, y + faceH * 0.7, faceH * 0.36, '#161616');
+    // 传统牌：数字和「萬」都是红色
+    inkText(NUM_CN[num - 1], cx, y + faceH * 0.29, faceH * 0.37, '#b3261e');
+    inkText('萬', cx, y + faceH * 0.71, faceH * 0.39, '#b3261e');
   } else if (suit === 1) {
     drawDots(cx, cy, w, faceH, num);
   } else {
