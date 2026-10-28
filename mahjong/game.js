@@ -230,7 +230,11 @@ const HONOR_CELL = {
 
 function tileCell(k) {
   if (k >= 27) return HONOR_CELL[k] || [3, 0];
-  return [Math.floor(k / 9), k % 9];
+  const suit = Math.floor(k / 9); // 0=万 1=筒 2=条
+  const num = k % 9;
+  // 图片行序：第1行万、第2行条、第3行筒
+  const row = suit === 0 ? 0 : suit === 1 ? 2 : 1;
+  return [row, num];
 }
 
 function loadTiles() {
