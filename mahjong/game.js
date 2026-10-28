@@ -212,8 +212,37 @@ function layout() {
 
 /* ================= 状态 ================= */
 
-const NAMES = ['你', '下家', '对家', '上家'];
-const COLORS = ['#f2b179', '#6fb2f2', '#b58cf2', '#5fd0a8'];
+/* ---------- 牌面贴图（真实牌面，9x4 精灵图） ---------- */
+const TILE_COLS = 9;
+const TILE_ROWS = 4;
+let tileSheet = null;
+
+// 行0=万1-9 行1=条1-9 行2=筒1-9 行3=北白南中發東西
+const HONOR_CELL = {
+  27: [3, 5], // 东
+  28: [3, 2], // 南
+  29: [3, 6], // 西
+  30: [3, 0], // 北
+  31: [3, 3], // 中
+  32: [3, 4], // 發
+  33: [3, 1]  // 白
+};
+
+function tileCell(k) {
+  if (k >= 27) return HONOR_CELL[k] || [3, 0];
+  return [Math.floor(k / 9), k % 9];
+}
+
+function loadTiles() {
+  try {
+    const img = new Image();
+    img.onload = function () { tileSheet = img; };
+    img.onerror = function () { tileSheet = null; };
+    img.src = './tiles.jpg';
+  } catch (e) {}
+}
+
+const NAMES = ['你', '下家', '对家', '上家'];const COLORS = ['#f2b179', '#6fb2f2', '#b58cf2', '#5fd0a8'];
 const SEAT_TINT = ['#8a5a33', '#2b4f7a', '#4a3a6b', '#2b6b52'];
 const NUM_CN = ['一', '二', '三', '四', '伍', '六', '七', '八', '九'];
 
@@ -1191,6 +1220,35 @@ function drawTileFace(x, y, w, h, k, opt) {
   rr(ctx, x, y + 2, w, faceH, r);
   ctx.fill();
 
+  // 有贴图就直接用真牌图片
+  if (tileSheet && k >= 0) {
+    const cell = tileCell(k);
+    const cw = tileSheet.width / TILE_COLS;
+    const chh = tileSheet.height / TILE_ROWS;
+
+    ctx.save();
+    rr(ctx, x, y, w, faceH, r);
+    ctx.clip();
+    ctx.drawImage(tileSheet, cell[1] * cw, cell[0] * chh, cw, chh, x, y, w, faceH);
+    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    rr(ctx, 1.5, 1.5, w - 3, Math.max(2, faceH * 0.09), r * 0.6);
+    ctx.fill();
+    ctx.restore();
+
+    if (opt.hl) {
+      ctx.strokeStyle = '#ffb64d';
+      ctx.lineWidth = 2;
+      rr(ctx, x + 1, y + 1, w - 2, faceH - 1, r);
+      ctx.stroke();
+    } else {
+      ctx.strokeStyle = 'rgba(90,80,60,0.32)';
+      ctx.lineWidth = 1;
+      rr(ctx, x + 0.5, y + 0.5, w - 1, faceH - 1, r);
+      ctx.stroke();
+    }
+    return;
+  }
+
   ctx.save();
   ctx.translate(x, y);
   ctx.fillStyle = faceGrad(w, faceH);
@@ -2142,6 +2200,7 @@ document.addEventListener('visibilitychange', () => {
 
 layout();
 phase = 'lobby';
+loadTiles();
 
 if (!window.Peer) {
   document.body.innerHTML =
