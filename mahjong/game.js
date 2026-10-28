@@ -213,6 +213,7 @@ function layout() {
 /* ================= 状态 ================= */
 
 /* ---------- 牌面贴图（真实牌面，9x4 精灵图） ---------- */
+const ASSET_V = '19'; // 每次更新资源都要改，防缓存
 const TILE_COLS = 9;
 const TILE_ROWS = 4;
 let tileSheet = null;
@@ -242,7 +243,7 @@ function loadTiles() {
     const img = new Image();
     img.onload = function () { tileSheet = img; };
     img.onerror = function () { tileSheet = null; };
-    img.src = './tiles.jpg';
+    img.src = './tiles.jpg?v=' + ASSET_V;
   } catch (e) {}
 }
 
@@ -361,7 +362,7 @@ function loadVoices() {
   if (!c) return;
   voiceLoading = true;
   try {
-    fetch('./voices.wav')
+    fetch('./voices.wav?v=' + ASSET_V)
       .then(r => r.arrayBuffer())
       .then(b => c.decodeAudioData(b))
       .then(buf => { voiceBuf = buf; })
