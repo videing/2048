@@ -29,10 +29,80 @@
       transform: translateX(100vw) rotate(90deg);
     }
   }
+
+  /* 访问码门禁 */
+  #gate {
+    position: fixed; inset: 0; z-index: 50;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px; background: #0b1410; color: #f2b179;
+  }
+  #gate.hide { display: none; }
+  #gate h2 { margin: 0 0 6px; font-size: 22px; letter-spacing: 2px; }
+  #gate .sub { color: #7f8c85; font-size: 12px; }
+  #gcode {
+    width: 200px; padding: 12px 14px; font-size: 22px; text-align: center; letter-spacing: 8px;
+    border-radius: 10px; border: 1px solid rgba(242,177,121,0.6);
+    background: rgba(255,255,255,0.06); color: #fff; outline: none;
+  }
+  #gbtn {
+    width: 200px; padding: 12px; border-radius: 10px; border: none;
+    background: #f2b179; color: #241a10; font-size: 16px; font-weight: 700;
+  }
+  #gerr { color: #ff7b6b; font-size: 13px; height: 18px; }
 </style>
 </head>
 <body>
 <div id="stage"><canvas id="c"></canvas></div>
+
+<div id="gate">
+  <h2>访问受限</h2>
+  <div class="sub">请输入访问码</div>
+  <input id="gcode" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="••••">
+  <button id="gbtn">进入</button>
+  <div id="gerr"></div>
+</div>
+
+<script>
+  (function () {
+    // 访问码（改这一行即可换码）
+    var PASS = '6688';
+    var KEY = 'mj_access_ok';
+
+    var gate = document.getElementById('gate');
+    var input = document.getElementById('gcode');
+    var btn = document.getElementById('gbtn');
+    var err = document.getElementById('gerr');
+
+    function unlock() {
+      gate.classList.add('hide');
+      try { localStorage.setItem(KEY, '1'); } catch (e) {}
+    }
+
+    try {
+      if (localStorage.getItem(KEY) === '1') unlock();
+    } catch (e) {}
+
+    if (location.search.indexOf('k=' + PASS) >= 0) unlock();
+
+    function tryEnter() {
+      var v = (input.value || '').trim();
+      if (v === PASS) {
+        unlock();
+      } else {
+        err.textContent = '访问码不对';
+        input.value = '';
+        input.focus();
+      }
+    }
+
+    btn.addEventListener('click', tryEnter);
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') tryEnter();
+    });
+    setTimeout(function () { input.focus(); }, 300);
+  })();
+</script>
+
 <script>
   window.addEventListener('error', function (e) {
     var d = document.createElement('pre');
@@ -41,7 +111,7 @@
     document.body.appendChild(d);
   });
 </script>
-<script src="./peerjs.min.js?v=23"></script>
-<script src="./game.js?v=23"></script>
+<script src="./peerjs.min.js?v=24"></script>
+<script src="./game.js?v=24"></script>
 </body>
 </html>
