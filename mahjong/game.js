@@ -213,7 +213,7 @@ function layout() {
 /* ================= 状态 ================= */
 
 /* ---------- 牌面贴图（真实牌面，9x4 精灵图） ---------- */
-const ASSET_V = '21'; // 每次更新资源都要改，防缓存
+const ASSET_V = '22'; // 每次更新资源都要改，防缓存
 const TILE_COLS = 9;
 const TILE_ROWS = 4;
 let tileSheet = null;
@@ -287,6 +287,7 @@ let peer = null;
 let conn = null;
 let conns = [];       // [{conn, seat}]
 let joinAttempt = 0;
+let lobbySeats = [0];
 let roomCode = '';
 let debugLog = [];
 let stateVersion = 0;
@@ -1005,7 +1006,10 @@ function startHost(fixedCode) {
 }
 
 function broadcastLobby() {
-  conns.forEach(c => c.conn.send({ t: 'lobby', n: conns.length + 1 }));
+  const seatsArr = [0].concat(conns.map(function (c) { return c.seat; }));
+  conns.forEach(function (c) {
+    c.conn.send({ t: 'lobby', seats: seatsArr, wild: wildMode });
+  });
 }
 
 function onHostData(conn, msg) {
@@ -1117,7 +1121,11 @@ function tryJoin() {
 
 function onClientData(msg) {
   if (msg.t === 'welcome') { me = msg.seat; log('入座 ' + NAMES[me]); return; }
-  if (msg.t === 'lobby') { return; }
+  if (msg.t === 'lobby') {
+    if (msg.seats) lobbySeats = msg.seats;
+    if (msg.wild !== undefined) wildMode = msg.wild;
+    return;
+  }
   if (msg.t === 'start') {
     if (msg.seat) me = msg.seat;
     if (msg.wild === false) wildMode = false;
@@ -1732,7 +1740,9 @@ function drawHumanArea() {
   const reveal = dealing ? Math.min(total, Math.floor((now - dealT0) / 68)) : total;
 
   // 手牌布局（摸到的牌留出更大的缝）
-  const drawnIdx = !dealing && drewT0 && now - drewT0 < 1500 ? total - 1 : -1;
+  // 手牌数为 3n+2 说明还捏着一张摸到的牌：一直留缝，直到打出才合并
+  const drawnIdx = (s.hand.length % 3 === 2) ? total - 1 : -1;
+  const flyIn = !dealing && drewT0 && now - drewT0 < 1500;
   const gapExtra = drawnIdx >= 0 ? Math.round(HAND_W * 0.55) : 0;
   const lift = Math.round(HAND_H * 0.08);
   const totalW = total * (HAND_W + 2) + gapExtra;
@@ -1755,7 +1765,7 @@ function drawHumanArea() {
     }
 
     // 摸牌：从牌墙飞入
-    if (drawnIdx >= 0 && i === drawnIdx) {
+    if (flyIn && i === drawnIdx) {
       const p = 1 - Math.pow(1 - Math.min(1, (now - drewT0) / 240), 3);
       x = wallX + (x - wallX) * p;
       y = wallY + (y - wallY) * p;
@@ -1999,9 +2009,9 @@ function drawLobby(now) {
   ctx.fillStyle = '#0b1410';
   ctx.fillRect(0, 0, W, H);
 
-  const titleSize = Math.min(H * 0.13, 56);
+  const titleSize = Math.min(H * 0.115, 50);
   const subSize = Math.min(H * 0.042, 18);
-  const codeSize = Math.min(H * 0.2, 72);
+  const codeSize = Math.min(H * 0.13, 52);
   const btnH = Math.min(H * 0.11, 56);
   const btnW = Math.min(W * 0.16, 180);
   const btnFont = Math.min(H * 0.045, 20);
@@ -2014,52 +2024,59 @@ function drawLobby(now) {
 
   ctx.fillStyle = '#9b968b';
   ctx.font = Math.round(subSize) + 'px -apple-system, "PingFang SC", sans-serif';
-  const sub = phase === 'hostWait'
-    ? '已加入 ' + (conns.length + 1) + '/4 人 · 人齐了再点「开始游戏」'
-    : phase === 'joinWait'
-      ? '正在连接 ' + roomCode + '…'
-      : '同一房间 4 人 · 空位自动补电脑';
+  let sub;
+  if (phase === 'hostWait') {
+    sub = '已加入 ' + (conns.length + 1) + '/4 人 · 人齐了再点「开始游戏」';
+  } else if (phase === 'joinWait') {
+    sub = isOnline
+      ? ('已加入 ' + lobbySeats.length + '/4 人 · 等待房主开始')
+      : ('正在连接 ' + roomCode + '…');
+  } else {
+    sub = '同一房间 4 人 · 空位自动补电脑';
+  }
   ctx.fillText(sub, W / 2, H * 0.1 + titleSize + 14);
 
-  if (phase === 'hostWait') {
+  const inRoom = phase === 'hostWait' || phase === 'joinWait';
+
+  if (inRoom) {
     ctx.fillStyle = '#6f8a7c';
     ctx.font = Math.round(subSize * 0.9) + 'px -apple-system, "PingFang SC", sans-serif';
-    ctx.fillText('房间号', W / 2, H * 0.245);
+    ctx.fillText('房间号', W / 2, H * 0.255);
 
     ctx.fillStyle = '#ffd08a';
     ctx.font = 'bold ' + Math.round(codeSize) + 'px monospace';
-    ctx.fillText(roomCode, W / 2, H * 0.28);
+    ctx.fillText(roomCode, W / 2, H * 0.285);
 
-    // 四个座位：谁进来了、哪个是电脑
+    const seatList = isHost ? [0].concat(conns.map(function (c) { return c.seat; })) : lobbySeats;
     const chipW = Math.min(W * 0.235, 210);
     const chipH = Math.min(H * 0.085, 36);
     const gapX = 12;
     const gapY = 8;
     const startX = (W - (chipW * 2 + gapX)) / 2;
-    const startY = H * 0.40;
+    const startY = H * 0.44;
 
     ctx.textBaseline = 'middle';
     for (let i = 0; i < 4; i++) {
       const cx2 = startX + (i % 2) * (chipW + gapX);
       const cy2 = startY + Math.floor(i / 2) * (chipH + gapY);
-      const joined = i === 0 || conns.some(function (c) { return c.seat === i; });
+      const joined = seatList.indexOf(i) >= 0;
+      const mine = i === me;
+      const tag = i === 0 ? '房主' : joined ? '真人' : '电脑';
 
       ctx.fillStyle = joined ? 'rgba(47,125,90,0.28)' : 'rgba(255,255,255,0.05)';
       rr(ctx, cx2, cy2, chipW, chipH, 8);
       ctx.fill();
-      ctx.strokeStyle = joined ? 'rgba(127,214,160,0.65)' : 'rgba(255,255,255,0.12)';
-      ctx.lineWidth = 1;
+      ctx.strokeStyle = mine ? 'rgba(242,177,121,0.9)' : joined ? 'rgba(127,214,160,0.65)' : 'rgba(255,255,255,0.12)';
+      ctx.lineWidth = mine ? 2 : 1;
       rr(ctx, cx2 + 0.5, cy2 + 0.5, chipW - 1, chipH - 1, 8);
       ctx.stroke();
 
-      ctx.fillStyle = joined ? '#9fd8b8' : '#6f8a7c';
+      ctx.fillStyle = mine ? '#f2b179' : joined ? '#9fd8b8' : '#6f8a7c';
       ctx.font = 'bold ' + Math.round(Math.min(H * 0.04, 15)) + 'px -apple-system, "PingFang SC", sans-serif';
-      const tag = i === 0 ? '房主' : joined ? '真人' : '电脑';
-      ctx.fillText(NAMES[i] + ' · ' + tag, cx2 + chipW / 2, cy2 + chipH / 2);
+      ctx.fillText(seatLabel(i) + ' · ' + tag, cx2 + chipW / 2, cy2 + chipH / 2);
     }
     ctx.textBaseline = 'top';
   }
-
   // 试听按钮（大厅）
   if (phase === 'lobby') {
     const pw = Math.min(W * 0.3, 200);
@@ -2082,11 +2099,11 @@ function drawLobby(now) {
   }
 
   // 红中癞子开关
-  if (phase === 'lobby' || phase === 'hostWait') {
+  if (phase === 'lobby' || inRoom) {
     const tw = Math.min(W * 0.24, 200);
     const thh = Math.min(H * 0.075, 38);
     const tx = (W - tw) / 2;
-    const ty = H * 0.60;
+    const ty = H * 0.63;
     ctx.fillStyle = wildMode ? 'rgba(242,177,121,0.18)' : 'rgba(255,255,255,0.06)';
     rr(ctx, tx, ty, tw, thh, 8);
     ctx.fill();
@@ -2099,7 +2116,7 @@ function drawLobby(now) {
     ctx.textBaseline = 'middle';
     ctx.fillText('红中当癞子：' + (wildMode ? '开' : '关'), tx + tw / 2, ty + thh / 2);
     ctx.textBaseline = 'top';
-    hits.push({ x: tx, y: ty, w: tw, h: thh, action: 'wild' });
+    if (isHost || !isOnline) hits.push({ x: tx, y: ty, w: tw, h: thh, action: 'wild' });
   }
 
   const btns = [];
@@ -2116,7 +2133,7 @@ function drawLobby(now) {
   const gap = 16;
   const total = btns.length * btnW + (btns.length - 1) * gap;
   let x = (W - total) / 2;
-  const y = H * 0.70;
+  const y = H * 0.72;
 
   btns.forEach(b => {
     ctx.fillStyle = b.color;
