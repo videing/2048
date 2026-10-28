@@ -1892,6 +1892,35 @@ function drawOver(now) {
 let inputCode = '';
 let showInput = false;
 
+function previewVoices() {
+  unlockAudio();
+  if (!voiceBuf) {
+    log('语音包加载中…');
+    setTimeout(previewVoices, 900);
+    return;
+  }
+  let k = 0;
+  const tick = function () {
+    if (k >= 34) {
+      log('试听结束');
+      return;
+    }
+    log('试听 ' + (k + 1) + '/34 → ' + speakName(k));
+    const c = audio();
+    if (c && voiceBuf) {
+      try {
+        const src = c.createBufferSource();
+        src.buffer = voiceBuf;
+        src.connect(c.destination);
+        src.start(0, VOICE_SEG[k][0] / VOICE_RATE, VOICE_SEG[k][1] / VOICE_RATE);
+      } catch (e) {}
+    }
+    k++;
+    setTimeout(tick, 850);
+  };
+  tick();
+}
+
 function drawLobby(now) {
   ctx.fillStyle = '#0b1410';
   ctx.fillRect(0, 0, W, H);
@@ -1955,6 +1984,27 @@ function drawLobby(now) {
       ctx.fillText(NAMES[i] + ' · ' + tag, cx2 + chipW / 2, cy2 + chipH / 2);
     }
     ctx.textBaseline = 'top';
+  }
+
+  // 试听按钮（大厅）
+  if (phase === 'lobby') {
+    const pw = Math.min(W * 0.3, 200);
+    const phh = Math.min(H * 0.085, 38);
+    const px = (W - pw) / 2;
+    const py = H * 0.44;
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    rr(ctx, px, py, pw, phh, 8);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(242,177,121,0.4)';
+    ctx.lineWidth = 1;
+    rr(ctx, px + 0.5, py + 0.5, pw - 1, phh - 1, 8);
+    ctx.stroke();
+    ctx.fillStyle = '#f2b179';
+    ctx.font = 'bold ' + Math.round(Math.min(H * 0.04, 15)) + 'px -apple-system, "PingFang SC", sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('🔊 试听牌名', px + pw / 2, py + phh / 2);
+    ctx.textBaseline = 'top';
+    hits.push({ x: px, y: py, w: pw, h: phh, action: 'preview' });
   }
 
   // 红中癞子开关
@@ -2134,6 +2184,10 @@ function handle(h) {
     log('红中癞子：' + (wildMode ? '开' : '关'));
     return;
   }
+  if (h.action === 'preview') {
+    previewVoices();
+    return;
+  }
   if (h.action === 'copyLink') {
     const ok = copyText(inviteLink());
     log(ok ? '✅ 邀请链接已复制' : '复制失败，请长按下方链接');
@@ -2277,6 +2331,7 @@ document.addEventListener('visibilitychange', () => {
 layout();
 phase = 'lobby';
 loadTiles();
+loadVoices();
 
 if (!window.Peer) {
   document.body.innerHTML =
