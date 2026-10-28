@@ -1104,32 +1104,78 @@ function inkText(txt, x, y, size, color) {
 function drawDots(cx, cy, w, h, n) {
   const pts = pipLayout(n);
   const base = Math.min(w, h);
-  const rad = base * (n === 1 ? 0.27 : n <= 2 ? 0.18 : n <= 6 ? 0.12 : 0.098);
-  pts.forEach(p => {
-    const x = cx + p[0] * w * 0.22;
-    const y = cy + p[1] * h * 0.26;
-    ctx.beginPath(); ctx.arc(x, y, rad, 0, Math.PI * 2); ctx.fillStyle = '#0f4c86'; ctx.fill();
-    ctx.beginPath(); ctx.arc(x, y, rad * 0.76, 0, Math.PI * 2); ctx.fillStyle = '#f8fbff'; ctx.fill();
-    ctx.beginPath(); ctx.arc(x, y, rad * 0.48, 0, Math.PI * 2); ctx.fillStyle = n === 1 ? '#b8302a' : '#1b6cb5'; ctx.fill();
+  const rad = base * (n === 1 ? 0.3 : n <= 2 ? 0.19 : n <= 6 ? 0.126 : 0.1);
+
+  pts.forEach((p, i) => {
+    const x = cx + p[0] * w * 0.215;
+    const y = cy + p[1] * h * 0.255;
+
+    const flip = i % 2 === 1;
+    const outer = flip ? '#1b7a45' : '#c2352b';
+    const inner = flip ? '#c2352b' : '#1b7a45';
+
+    ctx.beginPath(); ctx.arc(x, y, rad, 0, Math.PI * 2); ctx.fillStyle = outer; ctx.fill();
+    ctx.beginPath(); ctx.arc(x, y, rad * 0.72, 0, Math.PI * 2); ctx.fillStyle = '#fdfaf0'; ctx.fill();
+    ctx.beginPath(); ctx.arc(x, y, rad * 0.56, 0, Math.PI * 2); ctx.fillStyle = inner; ctx.fill();
+    ctx.beginPath(); ctx.arc(x, y, rad * 0.24, 0, Math.PI * 2); ctx.fillStyle = '#1d3350'; ctx.fill();
   });
 }
 
+function drawBird(cx, cy, w, h) {
+  const s = Math.min(w, h) * 0.3;
+  ctx.save();
+  ctx.translate(cx, cy);
+
+  ctx.strokeStyle = '#1b7a45';
+  ctx.lineWidth = Math.max(1.5, s * 0.17);
+  ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-s * 0.75, s * 0.55); ctx.lineTo(s * 0.3, -s * 0.25); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-s * 0.9, s * 0.2); ctx.lineTo(s * 0.25, -s * 0.45); ctx.stroke();
+
+  ctx.fillStyle = '#c2352b';
+  ctx.beginPath(); ctx.ellipse(0, 0, s * 0.62, s * 0.42, -0.25, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(s * 0.55, -s * 0.35, s * 0.27, 0, Math.PI * 2); ctx.fill();
+
+  ctx.fillStyle = '#1b7a45';
+  ctx.beginPath(); ctx.ellipse(-s * 0.05, s * 0.05, s * 0.34, s * 0.18, -0.2, 0, Math.PI * 2); ctx.fill();
+
+  ctx.fillStyle = '#141414';
+  ctx.beginPath(); ctx.arc(s * 0.64, -s * 0.4, s * 0.075, 0, Math.PI * 2); ctx.fill();
+
+  ctx.fillStyle = '#d99a2b';
+  ctx.beginPath();
+  ctx.moveTo(s * 0.79, -s * 0.36);
+  ctx.lineTo(s * 1.06, -s * 0.27);
+  ctx.lineTo(s * 0.79, -s * 0.18);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.restore();
+}
+
 function drawBamboo(cx, cy, w, h, n) {
+  if (n === 1) { drawBird(cx, cy, w, h); return; }
+
   const pts = pipLayout(n);
-  const bw = w * 0.155, bh = h * 0.2;
+  const bw = w * 0.135, bh = h * 0.195;
+
   pts.forEach((p, i) => {
     const x = cx + p[0] * w * 0.22;
     const y = cy + p[1] * h * 0.25;
-    const color = n === 1 || i === 0 ? '#b8302a' : '#177a45';
+    const color = i === 0 ? '#b8302a' : '#1b7a45';
+
     ctx.fillStyle = color;
-    rr(ctx, x - bw / 2, y - bh / 2, bw, bh, bw * 0.5);
+    rr(ctx, x - bw / 2, y - bh / 2, bw, bh, bw * 0.38);
     ctx.fill();
-    ctx.strokeStyle = 'rgba(0,0,0,0.22)';
-    ctx.lineWidth = Math.max(1, bw * 0.12);
-    ctx.beginPath();
-    ctx.moveTo(x - bw / 2 + 1, y);
-    ctx.lineTo(x + bw / 2 - 1, y);
-    ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(0,0,0,0.42)';
+    ctx.lineWidth = Math.max(1, bw * 0.15);
+    ctx.beginPath(); ctx.moveTo(x - bw / 2 + 1, y - bh * 0.18); ctx.lineTo(x + bw / 2 - 1, y - bh * 0.18); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x - bw / 2 + 1, y + bh * 0.18); ctx.lineTo(x + bw / 2 - 1, y + bh * 0.18); ctx.stroke();
+
+    ctx.fillStyle = 'rgba(255,255,255,0.38)';
+    rr(ctx, x - bw * 0.32, y - bh / 2 + 1, bw * 0.17, bh - 2, bw * 0.1);
+    ctx.fill();
   });
 }
 
@@ -1179,7 +1225,8 @@ function drawTileFace(x, y, w, h, k, opt) {
       ctx.lineWidth = Math.max(1.6, w * 0.06);
       ctx.strokeRect(cx - s / 2, cy - s / 2, s, s);
     } else {
-      inkText(nm, cx, cy + 1, faceH * 0.58, nm === '中' ? '#b3261e' : nm === '发' ? '#14703f' : '#233449');
+      const honorColor = (nm === '中' || nm === '發') ? '#c2352b' : '#1f2d3d';
+      inkText(nm, cx, cy + 1, faceH * 0.6, honorColor);
     }
     return;
   }
@@ -1187,8 +1234,9 @@ function drawTileFace(x, y, w, h, k, opt) {
   const suit = Math.floor(k / 9);
   const num = (k % 9) + 1;
   if (suit === 0) {
-    inkText(NUM_CN[num - 1], cx, y + faceH * 0.3, faceH * 0.34, '#b3261e');
-    inkText('萬', cx, y + faceH * 0.7, faceH * 0.36, '#b3261e');
+    // 传统牌：红色数字 + 黑色「萬」
+    inkText(NUM_CN[num - 1], cx, y + faceH * 0.3, faceH * 0.34, '#c2352b');
+    inkText('萬', cx, y + faceH * 0.7, faceH * 0.36, '#161616');
   } else if (suit === 1) {
     drawDots(cx, cy, w, faceH, num);
   } else {
