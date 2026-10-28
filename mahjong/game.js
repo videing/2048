@@ -172,35 +172,29 @@ const ctx = canvas.getContext('2d');
 const DPR = Math.min(window.devicePixelRatio || 1, 2);
 
 let W = 0, H = 0;
+let rotated = false;
 let TABLE_X, TABLE_W, TABLE_Y, TABLE_H, HAND_Y, HAND_H, HAND_W, BTN_Y, BTN_H, TILE_W, TILE_H, M;
 
 function layout() {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
-  W = vw; H = vh;
-  canvas.width = Math.round(vw * DPR);
-  canvas.height = Math.round(vh * DPR);
-  canvas.style.width = vw + 'px';
-  canvas.style.height = vh + 'px';
+
+  // 竖屏时 #stage 被 CSS 旋转 90°，画布的实际布局尺寸就是横屏尺寸
+  const cw = canvas.clientWidth || (vh > vw ? vh : vw);
+  const ch = canvas.clientHeight || (vh > vw ? vw : vh);
+
+  W = cw;
+  H = ch;
+  rotated = vh > vw;
+
+  canvas.width = Math.round(cw * DPR);
+  canvas.height = Math.round(ch * DPR);
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
 
-  const portrait = H > W * 1.05;
+  const portrait = false; // 旋转后永远按横屏布局
+  void portrait;
 
-  if (portrait) {
-    // 竖屏：牌桌在上，手牌在下
-    M = Math.round(W * 0.012);
-    TABLE_X = Math.round(W * 0.03);
-    TABLE_W = W - TABLE_X * 2;
-    TABLE_Y = Math.round(H * 0.14);
-    TABLE_H = Math.round(H * 0.38);
-    HAND_Y = Math.round(H * 0.755);
-    HAND_H = Math.round(H * 0.105);
-    HAND_W = Math.round(W * 0.062);
-    BTN_Y = Math.round(H * 0.665);
-    BTN_H = Math.round(H * 0.055);
-    TILE_W = Math.round(Math.min(W * 0.042, H * 0.028));
-    TILE_H = Math.round(TILE_W * 1.34);
-  } else {
+  {
     M = Math.round(W * 0.009);
     TABLE_X = Math.round(W * 0.155);
     TABLE_W = W - TABLE_X * 2;
@@ -761,35 +755,6 @@ function log(msg) {
 
 function inviteLink() {
   return location.origin + location.pathname + '?room=' + roomCode;
-}
-
-function goFullscreenLandscape() {
-  const el = document.documentElement;
-  const req = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen || el.msRequestFullscreen;
-  if (!req) {
-    log('设备不支持全屏，请手动横屏');
-    return;
-  }
-  try {
-    const p = req.call(el);
-    const lock = () => {
-      try {
-        if (screen.orientation && screen.orientation.lock) {
-          screen.orientation.lock('landscape').catch(() => {});
-        }
-      } catch (e) {}
-    };
-    if (p && p.then) {
-      p.then(() => {
-        lock();
-        setTimeout(onViewportChange, 350);
-      }).catch(() => lock());
-    } else {
-      lock();
-    }
-  } catch (e) {
-    log('全屏失败，请手动横屏');
-  }
 }
 
 function copyText(text) {
@@ -1727,23 +1692,6 @@ function drawLobby(now) {
     ctx.fillText('房间号', W / 2, H * 0.34 - 24);
   }
 
-  // 竖屏时给一个「横屏全屏」按钮
-  if (H > W * 1.05 && phase === 'lobby') {
-    const bw2 = Math.min(W * 0.58, 230);
-    const bh2 = Math.min(H * 0.062, 42);
-    const bx2 = (W - bw2) / 2;
-    const by2 = H * 0.27;
-    ctx.fillStyle = 'rgba(47,125,90,0.85)';
-    rr(ctx, bx2, by2, bw2, bh2, 10);
-    ctx.fill();
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold ' + Math.round(Math.min(H * 0.038, 15)) + 'px -apple-system, "PingFang SC", sans-serif';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('⛶ 横屏全屏', bx2 + bw2 / 2, by2 + bh2 / 2);
-    ctx.textBaseline = 'top';
-    hits.push({ x: bx2, y: by2, w: bw2, h: bh2, action: 'fullscreen' });
-  }
-
   // 红中癞子开关
   if (phase === 'lobby' || phase === 'hostWait') {
     const tw = Math.min(W * 0.24, 200);
@@ -1872,23 +1820,23 @@ function draw(now) {
 let hintT0 = Date.now();
 
 function drawRotateHint(now) {
-  if (H <= W * 1.05) return;
+  if (!rotated) return;
   const t = now - hintT0;
   if (t > 3000) return;
   const a = t < 2400 ? 1 : (3000 - t) / 600;
 
   ctx.save();
   ctx.globalAlpha = Math.max(0, a) * 0.9;
-  const hw = Math.min(W * 0.82, 340);
-  const hh = Math.min(H * 0.065, 56);
-  rr(ctx, (W - hw) / 2, 14, hw, hh, 12);
+  const hw = Math.min(W * 0.5, 320);
+  const hh = Math.min(H * 0.115, 52);
+  rr(ctx, (W - hw) / 2, 12, hw, hh, 12);
   ctx.fillStyle = 'rgba(0,0,0,0.78)';
   ctx.fill();
   ctx.fillStyle = '#f2b179';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.font = 'bold ' + Math.round(Math.min(H * 0.026, 15)) + 'px -apple-system, "PingFang SC", sans-serif';
-  ctx.fillText('建议横屏 · 竖屏也能玩', W / 2, 14 + hh / 2);
+  ctx.font = 'bold ' + Math.round(Math.min(H * 0.05, 16)) + 'px -apple-system, "PingFang SC", sans-serif';
+  ctx.fillText('📱 请把手机横过来', W / 2, 12 + hh / 2);
   ctx.restore();
   ctx.textBaseline = 'top';
 }
@@ -1924,10 +1872,6 @@ function handle(h) {
   if (h.action === 'copyLink') {
     const ok = copyText(inviteLink());
     log(ok ? '✅ 邀请链接已复制' : '复制失败，请长按下方链接');
-    return;
-  }
-  if (h.action === 'fullscreen') {
-    goFullscreenLandscape();
     return;
   }
   if (h.action === 'exit') {
@@ -1975,7 +1919,16 @@ function sendAct(a, extra) {
 canvas.addEventListener('pointerdown', (e) => {
   unlockAudio();
   const r = canvas.getBoundingClientRect();
-  onTap(e.clientX - r.left, e.clientY - r.top);
+  let x, y;
+  if (rotated) {
+    // 竖屏时画布被旋转了 90°，需要把屏幕坐标换算回画布坐标
+    x = e.clientY - r.top;
+    y = r.width - (e.clientX - r.left);
+  } else {
+    x = e.clientX - r.left;
+    y = e.clientY - r.top;
+  }
+  onTap(x, y);
 });
 
 // 任何点击/触摸都尝试解锁（覆盖顶部按钮、页面空白处）
@@ -1988,10 +1941,9 @@ let lastVW = window.innerWidth;
 let lastVH = window.innerHeight;
 
 function onViewportChange() {
-  const wasPortrait = H > W * 1.05;
+  const wasRotated = rotated;
   layout();
-  const isPortrait = H > W * 1.05;
-  if (wasPortrait !== isPortrait) hintT0 = Date.now();
+  if (wasRotated !== rotated) hintT0 = Date.now();
 }
 
 window.addEventListener('resize', onViewportChange);
