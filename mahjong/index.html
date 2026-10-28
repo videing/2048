@@ -3,11 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="format-detection" content="telephone=no">
 <title>四人麻将 · 联机</title>
 <style>
   html, body {
     margin: 0; height: 100%; background: #0a120e; overflow: hidden;
     touch-action: none; -webkit-tap-highlight-color: transparent;
+    -webkit-user-select: none; user-select: none;
     font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
   }
   canvas { display: block; width: 100vw; height: 100vh; }
@@ -15,7 +17,15 @@
 </head>
 <body>
 <canvas id="c"></canvas>
+<script>
+  window.addEventListener('error', function (e) {
+    var d = document.createElement('pre');
+    d.style.cssText = 'position:fixed;inset:0;margin:0;padding:16px;background:#120a0a;color:#ff7b6b;font:12px/1.6 monospace;white-space:pre-wrap;z-index:99;overflow:auto';
+    d.textContent = 'JS 错误：\n' + (e.message || '') + '\n' + (e.filename || '') + ':' + (e.lineno || '') + ':' + (e.colno || '');
+    document.body.appendChild(d);
+  });
+</script>
 <script src="./peerjs.min.js"></script>
-<script type="module" src="./main.js"></script>
+<script src="./game.js"></script>
 </body>
 </html>
