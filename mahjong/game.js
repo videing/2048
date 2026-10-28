@@ -213,7 +213,7 @@ function layout() {
 /* ================= 状态 ================= */
 
 /* ---------- 牌面贴图（真实牌面，9x4 精灵图） ---------- */
-const ASSET_V = '22'; // 每次更新资源都要改，防缓存
+const ASSET_V = '23'; // 每次更新资源都要改，防缓存
 const TILE_COLS = 9;
 const TILE_ROWS = 4;
 let tileSheet = null;
@@ -557,13 +557,12 @@ function claimOptions(p, tile) {
   const counts = w.counts;
   const opts = [];
 
+  // 只能自摸：别人打的牌不能胡
   if (tile === 31 && wildMode) {
-    if (canWinHand(counts, s.melds.length, w.wild + 1)) opts.push({ type: 'win' });
     return opts;
   }
 
   counts[tile]++;
-  if (canWinHand(counts, s.melds.length, w.wild)) opts.push({ type: 'win' });
   counts[tile]--;
   if (counts[tile] >= 2) opts.push({ type: 'peng' });
   if (counts[tile] >= 3) opts.push({ type: 'gang' });
@@ -1849,7 +1848,7 @@ function drawButtons() {
     const opts = isHost ? (pendingClaims.find(c => c.seat === me) || { opts: [] }).opts
                         : claimOptions(me, lastDiscard.tile);
     opts.forEach(o => {
-      if (o.type === 'win') btns.push({ label: '胡', action: 'discardWin', color: '#d94a34', w: 56 });
+      // 只能自摸，没有点炮胡
       if (o.type === 'peng') btns.push({ label: '碰', action: 'peng', color: '#2f7dd0', w: 56 });
       if (o.type === 'gang') btns.push({ label: '杠', action: 'gang', color: '#7a4fd0', w: 56 });
     });
@@ -2339,7 +2338,7 @@ function handle(h) {
   }
 
   if (h.action === 'win') doWin(me, me, true);
-  else if (h.action === 'discardWin') doWin(me, lastDiscard.from, false);
+  // 只能自摸，无点炮胡
   else if (h.action === 'peng') applyClaim(me, { type: 'peng' }, lastDiscard.tile, lastDiscard.from);
   else if (h.action === 'gang') applyClaim(me, { type: 'gang' }, lastDiscard.tile, lastDiscard.from);
   else if (h.action === 'angang') concealedGang(me, h.payload);
