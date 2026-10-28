@@ -213,7 +213,7 @@ function layout() {
 /* ================= 状态 ================= */
 
 /* ---------- 牌面贴图（真实牌面，9x4 精灵图） ---------- */
-const ASSET_V = '19'; // 每次更新资源都要改，防缓存
+const ASSET_V = '20'; // 每次更新资源都要改，防缓存
 const TILE_COLS = 9;
 const TILE_ROWS = 4;
 let tileSheet = null;
@@ -268,6 +268,9 @@ let ttsWarmed = false;
 let speakText = '';
 let speakT0 = 0;
 let roundNo = 1;
+let turnT0 = Date.now();
+let claimT0 = 0;
+const TURN_LIMIT = 5000;
 let winT = 0;
 let dealT0 = 0;
 let drewT0 = 0;
@@ -497,6 +500,8 @@ function newGame(keepScores) {
   wall = shuffle(makeWall());
   turn = 0;
   phase = 'playing';
+  turnT0 = Date.now();
+  claimT0 = 0;
   winner = null;
   winInfo = null;
   lastDiscard = null;
@@ -595,6 +600,7 @@ function discardTile(i, idx) {
   if (humanClaims.length) {
     pendingClaims = humanClaims;
     phase = 'claim';
+    claimT0 = Date.now();
     message = '等待玩家操作…';
     stateVersion++;
     return;
@@ -614,7 +620,7 @@ function applyClaim(seat, opt, tile, from) {
     s.melds.push({ type: 'peng', tiles: [tile, tile, tile], from });
     seats[from].discards.pop();
     sfx.peng();
-    message = (seat === me ? '你' : s.name) + ' 碰 ' + kindName(tile);
+    message = seatLabel(seat) + ' 碰 ' + kindName(tile);
   } else if (opt.type === 'gang') {
     for (let k = 0; k < 3; k++) s.hand.splice(s.hand.indexOf(tile), 1);
     s.melds.push({ type: 'gang', tiles: [tile, tile, tile, tile], from });
@@ -623,7 +629,7 @@ function applyClaim(seat, opt, tile, from) {
     // 明杠：放杠的人赔 1 分
     seats[from].score -= 1;
     s.score += 1;
-    message = (seat === me ? '你' : s.name) + ' 杠 ' + kindName(tile) + '（' + seats[from].name + ' 赔 1 分）';
+    message = seatLabel(seat) + ' 杠 ' + kindName(tile) + '（' + seatLabel(from) + ' 赔 1 分）';
     drawFor(seat);
   }
 
@@ -631,6 +637,7 @@ function applyClaim(seat, opt, tile, from) {
   sortHand(seat);
   turn = seat;
   phase = 'playing';
+  turnT0 = Date.now();
   stateVersion++;
 
   if (s.ai) setTimeout(() => aiDiscard(seat), 450);
@@ -693,8 +700,8 @@ function doWin(seat, from, selfDraw) {
     bonusHits
   };
   message = selfDraw
-    ? (seat === me ? '你自摸！' : s.name + ' 自摸')
-    : (seat === me ? '你胡了 ' + (lastDiscard ? kindName(lastDiscard.tile) : '') : s.name + ' 胡了 ' + (lastDiscard ? kindName(lastDiscard.tile) : ''));
+    ? (seat === me ? '你自摸！' : seatLabel(seat) + ' 自摸')
+    : seatLabel(seat) + ' 胡了 ' + (lastDiscard ? kindName(lastDiscard.tile) : '');
   winT = Date.now();
   sfx.win();
   stateVersion++;
@@ -757,12 +764,13 @@ function nextTurn(from) {
   phase = 'playing';
   const s = seats[turn];
   if (!drawFor(turn)) return;
+  turnT0 = Date.now();
   stateVersion++;
   if (s.ai) {
-    message = s.name + ' 摸牌…';
+    message = seatLabel(turn) + ' 摸牌…';
     setTimeout(() => aiTurn(turn), 340);
   } else {
-    message = turn === me ? '你的回合' : s.name + ' 回合';
+    message = turn === me ? '你的回合' : seatLabel(turn) + ' 回合';
   }
 }
 
@@ -790,10 +798,11 @@ function concealedGang(i, k) {
     income += 2;
   });
   s.score += income;
-  message = (i === me ? '你' : s.name) + ' 暗杠 ' + kindName(k) + '（每家赔 2 分）';
+  message = seatLabel(i) + ' 暗杠 ' + kindName(k) + '（每家赔 2 分）';
   drawFor(i);
   turn = i;
   phase = 'playing';
+  turnT0 = Date.now();
   stateVersion++;
   if (s.ai) setTimeout(() => aiDiscard(i), 420);
 }
@@ -1111,6 +1120,8 @@ function broadcastState() {
 }
 
 function applyView(v) {
+  if (v.turn !== turn) turnT0 = Date.now();
+  if (v.phase === 'claim' && phase !== 'claim') claimT0 = Date.now();
   const prevSeq = lastDiscard && lastDiscard.seq;
   if (v.lastDiscard && v.lastDiscard.seq !== prevSeq) {
     speakTile(v.lastDiscard.tile);
@@ -1449,21 +1460,32 @@ function drawTable() {
   ctx.restore();
 }
 
+function relOf(i) {
+  return ((i - me) % 4 + 4) % 4;
+}
+
+function seatLabel(i) {
+  if (i === me) return '你';
+  return ['你', '下家', '对家', '上家'][relOf(i)];
+}
+
 function seatZone(i) {
   const left = TABLE_X + 10;
   const right = TABLE_X + TABLE_W - 10;
   const top = TABLE_Y + 8;
   const bottom = TABLE_Y + TABLE_H - 8;
-  if (i === 2) return { x: W / 2, y: top, anchor: 'top', perRow: 8 };
-  if (i === 3) return { x: left, y: (top + bottom) / 2, anchor: 'left', perRow: 4 };
-  if (i === 1) return { x: right, y: (top + bottom) / 2, anchor: 'right', perRow: 4 };
+  const r = relOf(i);
+  if (r === 2) return { x: W / 2, y: top, anchor: 'top', perRow: 8 };
+  if (r === 3) return { x: left, y: (top + bottom) / 2, anchor: 'left', perRow: 4 };
+  if (r === 1) return { x: right, y: (top + bottom) / 2, anchor: 'right', perRow: 4 };
   return { x: W / 2, y: bottom, anchor: 'bottom', perRow: 8 };
 }
 
 function seatAnchor(i) {
-  if (i === 2) return { x: W / 2, y: 6 };
-  if (i === 3) return { x: 50, y: TABLE_Y + TABLE_H / 2 };
-  if (i === 1) return { x: W - 50, y: TABLE_Y + TABLE_H / 2 };
+  const r = relOf(i);
+  if (r === 2) return { x: W / 2, y: 6 };
+  if (r === 3) return { x: 50, y: TABLE_Y + TABLE_H / 2 };
+  if (r === 1) return { x: W - 50, y: TABLE_Y + TABLE_H / 2 };
   return { x: W / 2, y: HAND_Y + 10 };
 }
 
@@ -1591,11 +1613,33 @@ function drawAvatar(x, y, r, seat) {
   }
 }
 
+function drawHandBacks(c, n) {
+  if (c.pos === 'top') {
+    const bw = 5, bh = 9, gap = 1;
+    const count = Math.min(n, 14);
+    const startX = c.x + c.w - 14 - count * (bw + gap);
+    for (let i = 0; i < count; i++) {
+      drawTileBack(startX + i * (bw + gap), c.y + 9, bw, bh);
+    }
+  } else {
+    const bw = 5, bh = 7, gap = 1;
+    const maxN = Math.max(0, Math.floor((c.h - 52) / (bh + gap)));
+    const count = Math.min(n, maxN, 14);
+    for (let i = 0; i < count; i++) {
+      drawTileBack(c.x + 7, c.y + 46 + i * (bh + gap), bw, bh);
+    }
+  }
+}
+
 function drawSeats() {
+  const topSeat = (me + 2) % 4;
+  const rightSeat = (me + 1) % 4;
+  const leftSeat = (me + 3) % 4;
+
   const cards = [
-    { i: 2, x: W / 2 - W * 0.12, y: 2, w: W * 0.24, h: H * 0.1, v: false },
-    { i: 3, x: W * 0.05, y: TABLE_Y + 34, w: W * 0.098, h: H * 0.26, v: true },
-    { i: 1, x: W - W * 0.148, y: TABLE_Y + 34, w: W * 0.098, h: H * 0.26, v: true }
+    { i: topSeat, x: W / 2 - W * 0.12, y: 2, w: W * 0.24, h: H * 0.1, v: false, pos: 'top' },
+    { i: leftSeat, x: W * 0.05, y: TABLE_Y + 34, w: W * 0.098, h: H * 0.26, v: true, pos: 'left' },
+    { i: rightSeat, x: W - W * 0.148, y: TABLE_Y + 34, w: W * 0.098, h: H * 0.26, v: true, pos: 'right' }
   ];
 
   cards.forEach(c => {
@@ -1611,22 +1655,24 @@ function drawSeats() {
     rr(ctx, c.x + 0.5, c.y + 0.5, c.w - 1, c.h - 1, 10);
     ctx.stroke();
 
+    drawHandBacks(c, s.hand.length);
+
     if (c.v) {
       drawAvatar(c.x + c.w / 2, c.y + 20, 13, c.i);
       ctx.textAlign = 'center';
       ctx.fillStyle = COLORS[c.i];
       ctx.font = 'bold 11px -apple-system, "PingFang SC", sans-serif';
-      ctx.fillText(s.name, c.x + c.w / 2, c.y + 40);
+      ctx.fillText(seatLabel(c.i), c.x + c.w / 2, c.y + 40);
       ctx.fillStyle = '#e7e2d6';
       ctx.font = '10px -apple-system, "PingFang SC", sans-serif';
-      ctx.fillText(s.hand.length + ' 张', c.x + c.w / 2, c.y + 58);
-      ctx.fillText((s.score > 0 ? '+' : '') + s.score + ' 分', c.x + c.w / 2, c.y + 73);
+      ctx.fillText(s.hand.length + ' 张', c.x + c.w / 2, c.y + 57);
+      ctx.fillText((s.score > 0 ? '+' : '') + s.score + ' 分', c.x + c.w / 2, c.y + 72);
     } else {
       drawAvatar(c.x + 19, c.y + 19, 12, c.i);
       ctx.textAlign = 'left';
       ctx.fillStyle = COLORS[c.i];
       ctx.font = 'bold 11px -apple-system, "PingFang SC", sans-serif';
-      ctx.fillText(s.name, c.x + 36, c.y + 8);
+      ctx.fillText(seatLabel(c.i), c.x + 36, c.y + 8);
       ctx.fillStyle = '#e7e2d6';
       ctx.font = '10px -apple-system, "PingFang SC", sans-serif';
       ctx.fillText(s.hand.length + ' 张 · ' + (s.score > 0 ? '+' : '') + s.score + ' 分', c.x + 36, c.y + 24);
@@ -1810,7 +1856,7 @@ function drawOver(now) {
   ctx.textBaseline = 'top';
   ctx.fillStyle = winner === me ? '#f2b179' : '#f3f1ea';
   ctx.font = 'bold ' + Math.round(f) + 'px -apple-system, "PingFang SC", sans-serif';
-  ctx.fillText(winner === me ? '你胡了 🎉' : winner > 0 ? NAMES[winner] + ' 胡了' : '流局', W / 2, y);
+  ctx.fillText(winner === me ? '你胡了 🎉' : winner > 0 ? seatLabel(winner) + ' 胡了' : '流局', W / 2, y);
   y += f + 14;
 
   if (winInfo) {
@@ -1848,7 +1894,7 @@ function drawOver(now) {
     const d = winInfo && winInfo.deltas ? winInfo.deltas[i] : 0;
     ctx.fillStyle = i === me ? '#f2b179' : '#9b968b';
     ctx.font = (i === me ? 'bold ' : '') + Math.round(f3) + 'px -apple-system, "PingFang SC", sans-serif';
-    ctx.fillText(s.name + '  ' + (d > 0 ? '+' : '') + d + '  （总 ' + s.score + '）', W / 2, y);
+    ctx.fillText(seatLabel(i) + '  ' + (d > 0 ? '+' : '') + d + '  （总 ' + s.score + '）', W / 2, y);
     y += f3 + 8;
   });
 
@@ -2361,9 +2407,22 @@ if (hostMatch) {
   startHost(hostMatch[1] === '1' ? null : hostMatch[1]);
 }
 
+// 只有人机有强制出牌时间，玩家不限时
+function enforceAiTimer(now) {
+  if (phase !== 'playing') return;
+  const s = seats[turn];
+  if (!s || !s.ai) return;
+  if (now - turnT0 <= TURN_LIMIT) return;
+  if (!isHost && isOnline) return; // 由房主推进
+
+  log('人机超时 5s，强制出牌');
+  discardTile(turn, s.hand.length - 1);
+}
+
 function loop() {
   const now = Date.now();
   try {
+    enforceAiTimer(now);
     if (isHost && isOnline && phase === 'playing' && stateVersion !== lastSentVersion) {
       broadcastState();
     }
