@@ -213,7 +213,7 @@ function layout() {
 /* ================= 状态 ================= */
 
 /* ---------- 牌面贴图（真实牌面，9x4 精灵图） ---------- */
-const ASSET_V = '20'; // 每次更新资源都要改，防缓存
+const ASSET_V = '21'; // 每次更新资源都要改，防缓存
 const TILE_COLS = 9;
 const TILE_ROWS = 4;
 let tileSheet = null;
@@ -271,6 +271,9 @@ let roundNo = 1;
 let turnT0 = Date.now();
 let claimT0 = 0;
 const TURN_LIMIT = 5000;
+let firstDiscard = null;
+let followSeats = {};
+let lastProgressT = Date.now();
 let winT = 0;
 let dealT0 = 0;
 let drewT0 = 0;
@@ -502,6 +505,9 @@ function newGame(keepScores) {
   phase = 'playing';
   turnT0 = Date.now();
   claimT0 = 0;
+  firstDiscard = null;
+  followSeats = {};
+  lastProgressT = Date.now();
   winner = null;
   winInfo = null;
   lastDiscard = null;
@@ -572,6 +578,27 @@ function discardTile(i, idx) {
   lastDiscardT = Date.now();
   sfx.tile();
   speakTile(tile);
+
+  // 跟打规则：首张牌被其余三家跟打，首家人各赔 1 分
+  if (!firstDiscard) {
+    firstDiscard = { tile: tile, from: i };
+  } else if (firstDiscard && i !== firstDiscard.from && tile === firstDiscard.tile && !followSeats[i]) {
+    followSeats[i] = 1;
+    message = seatLabel(i) + ' 跟打 ' + kindName(tile);
+    const cnt = Object.keys(followSeats).length;
+    if (cnt >= 3) {
+      const f = firstDiscard.from;
+      active.forEach(function (p) {
+        if (p === f) return;
+        seats[f].score -= 1;
+        seats[p].score += 1;
+      });
+      message = seatLabel(f) + ' 首牌 ' + kindName(tile) + ' 被三家跟打，各赔 1 分';
+      firstDiscard = null;
+      followSeats = {};
+      stateVersion++;
+    }
+  }
 
   const claims = [];
   const base = active.indexOf(i);
@@ -2408,6 +2435,40 @@ if (hostMatch) {
 }
 
 // 只有人机有强制出牌时间，玩家不限时
+let lastWatchVersion = -1;
+
+function enforceStall(now) {
+  if (!(isHost || !isOnline)) return;
+
+  // 状态变了说明有进展
+  if (stateVersion !== lastWatchVersion) {
+    lastWatchVersion = stateVersion;
+    lastProgressT = now;
+  }
+
+  // 等牌阶段：可能是远程玩家掉线，超时就自动过牌
+  if (phase === 'claim' && pendingClaims.length && now - claimT0 > 8000) {
+    const allRemote = pendingClaims.every(function (c) {
+      return c.seat !== me && !seats[c.seat].ai;
+    });
+    if (allRemote) {
+      log('等牌超时，自动过牌');
+      pendingClaims = [];
+      nextTurn(lastDiscard ? lastDiscard.from : turn);
+      stateVersion++;
+    }
+    return;
+  }
+
+  if (phase !== 'playing') return;
+  const s = seats[turn];
+  if (!s || !s.ai) return;
+  if (now - turnT0 <= TURN_LIMIT) return;
+
+  log('人机超时，强制出牌');
+  discardTile(turn, s.hand.length - 1);
+}
+
 function enforceAiTimer(now) {
   if (phase !== 'playing') return;
   const s = seats[turn];
@@ -2423,6 +2484,7 @@ function loop() {
   const now = Date.now();
   try {
     enforceAiTimer(now);
+    enforceStall(now);
     if (isHost && isOnline && phase === 'playing' && stateVersion !== lastSentVersion) {
       broadcastState();
     }
