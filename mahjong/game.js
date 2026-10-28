@@ -213,7 +213,7 @@ function layout() {
 /* ================= 状态 ================= */
 
 /* ---------- 牌面贴图（真实牌面，9x4 精灵图） ---------- */
-const ASSET_V = '23'; // 每次更新资源都要改，防缓存
+const ASSET_V = '24'; // 每次更新资源都要改，防缓存
 const TILE_COLS = 9;
 const TILE_ROWS = 4;
 let tileSheet = null;
