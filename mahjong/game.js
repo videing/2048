@@ -634,7 +634,10 @@ function doWin(seat, from, selfDraw) {
     });
   }
 
-  // 3. 落分
+  // 3. 落分（强制零和：赢家得分 = 其他三家扣分之和的相反数）
+  let othersSum = 0;
+  active.forEach(i => { if (i !== seat) othersSum += deltas[i]; });
+  deltas[seat] = -othersSum;
   active.forEach(i => { seats[i].score += deltas[i]; });
 
   winInfo = {
